@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>2048 Merge – Free Retro Browser Game</title>
+<meta name="description" content="2048 Merge: the free neon sliding number puzzle. Slide the tiles, merge matching numbers and reach 2048. Plays in your browser on desktop and phone.">
+<meta name="theme-color" content="#05050f">
+<!--
+  2048 Merge
+  A single-file retro take on the 4x4 sliding merge puzzle (HTML5 canvas, no dependencies).
+  Controls: arrows / WASD to slide, Space or P to pause, M to mute. Swipe on touch screens.
+
+  License: personal and commercial use of the game in your own projects allowed; do not resell this source as-is.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #05050f; color: #d8e1ff;
+    font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+    overflow-x: hidden; -webkit-text-size-adjust: 100%;
+  }
+  body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+  header {
+    width: 100%; max-width: 560px; padding: 10px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  h1 {
+    margin: 0; font-size: 20px; letter-spacing: 3px; text-transform: uppercase;
+    color: #ffe600; text-shadow: 0 0 8px #ffe600;
+  }
+  .btns { display: flex; gap: 8px; }
+  .btn {
+    font: inherit; font-weight: bold; font-size: 13px; letter-spacing: 1px;
+    background: #10102e; color: #d8e1ff; border: 2px solid #3d3dff;
+    padding: 6px 10px; cursor: pointer; border-radius: 0;
+    -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation;
+  }
+  .btn:hover { border-color: #00e5ff; color: #00e5ff; }
+  .btn:active { background: #23235e; }
+  main { width: 100%; padding: 0 16px; display: flex; flex-direction: column; align-items: center; }
+  canvas {
+    display: block; max-width: 100%;
+    background: #05050f; border: 2px solid #1f1f5a;
+    box-shadow: 0 0 24px rgba(255, 230, 0, .18);
+    image-rendering: pixelated; touch-action: none; user-select: none;
+  }
+  @media (max-width: 420px) {
+    header { flex-wrap: wrap; }
+    h1 { font-size: 16px; letter-spacing: 2px; }
+    .btns { gap: 6px; }
+    .btn { font-size: 11px; padding: 5px 7px; }
+  }
+  footer {
+    width: 100%; max-width: 560px; padding: 14px 16px 28px;
+    font-size: 13px; line-height: 1.5; color: #8a93c4; text-align: center;
+  }
+  footer kbd { color: #ffe600; font-family: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>2048 Merge</h1>
+  <div class="btns">
+    <button class="btn" id="newBtn" type="button" aria-label="New game">NEW</button>
+    <button class="btn" id="pauseBtn" type="button" aria-label="Pause">PAUSE</button>
+    <button class="btn" id="muteBtn" type="button" aria-label="Toggle sound">SOUND ON</button>
+  </div>
+</header>
+
+<main>
+  <canvas id="game" aria-label="2048 Merge game"></canvas>
+</main>
+
+<footer>
+  <p><kbd>Arrows</kbd>/<kbd>WASD</kbd> slide &middot; <kbd>Space</kbd>/<kbd>P</kbd> pause &middot; <kbd>M</kbd> mute &middot; swipe on touch screens</p>
+  <div class="gshop"><a href="../">More free games</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973" target="_blank" rel="noopener" data-buy="tip">Tip what you like</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973/3USD" target="_blank" rel="noopener" data-buy="games">Offline pack + source: $3</a></div><img src="https://hits.sh/vampyer.github.io/app-copy/site.svg" alt="" width="1" height="1" style="position:absolute;opacity:0"><script>document.querySelectorAll('[data-buy]').forEach(a=>a.addEventListener('click',()=>{new Image().src='https://hits.sh/vampyer.github.io/app-copy/buy-'+a.dataset.buy+'.svg'}));</script><style>.gshop{font:14px/1.6 system-ui,sans-serif;text-align:center;padding:12px 16px;color:#aab}.gshop a{color:#7fe3c4}</style>
+</footer>
+
+<script>
+"use strict";
+
+/* ---------- Storage (wrapped: localStorage can throw in private mode) ---------- */
+const store = {
+  get(key, fallback) {
+    try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); }
+    catch (e) { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+  }
+};
+
+/* ---------- Sound: tiny WebAudio beeper, created on first user input ---------- */
+const sound = {
+  ctx: null,
+  muted: store.get('retro.muted', false),
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { try { this.ctx = new AC(); } catch (e) { this.ctx = null; } }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  // freq in Hz, dur in seconds; opts: type, vol, at (delay), to (end freq for a slide)
+  beep(freq, dur = 0.08, opts = {}) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime + (opts.at || 0);
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = opts.type || 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    if (opts.to) osc.frequency.exponentialRampToValueAtTime(opts.to, t + dur);
+    gain.gain.setValueAtTime(opts.vol || 0.05, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  },
+  toggle() { this.muted = !this.muted; store.set('retro.muted', this.muted); syncButtons(); }
+};
+
+/* ---------- Setup ---------- */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const N = 4, HUD = 84, PAD = 12;
+const W = 400, H = HUD + W;
+const TILE = (W - PAD * (N + 1)) / N;
+canvas.width = W; canvas.height = H;
+const FONT = '"Courier New", ui-monospace, Menlo, Consolas, monospace';
+const COLOR = { bg: '#05050f', board: '#0b0b24', empty: '#13133a', text: '#d8e1ff', dim: '#8a93c4',
+  yellow: '#ffe600', pink: '#ff2bd6', red: '#ff3355', cyan: '#00e5ff' };
+// neon colour per tile value; anything past 2048 reuses the last colour
+const TILE_COLORS = {
+  2: '#00e5ff', 4: '#39ff14', 8: '#ffe600', 16: '#ff9f1c', 32: '#ff3355', 64: '#ff2bd6',
+  128: '#b04bff', 256: '#4b6bff', 512: '#00ffa3', 1024: '#ffd700', 2048: '#ffffff'
+};
+const SLIDE_MS = 110, POP_MS = 150;
+const BEST_KEY = 'merge2048.best';
+
+let state = 'start';            // start | play | pause | won | over
+let grid, tiles, ghosts, score = 0, best = store.get(BEST_KEY, 0);
+let anim = null;                // { t0 } while tiles slide
+let won = false, keepGoing = false, newBest = false, overAt = 0, nextId = 1;
+let scorePops = [];
+
+/* ---------- Board logic ---------- */
+function emptyGrid() { return Array.from({ length: N }, () => Array(N).fill(null)); }
+
+function addRandomTile() {
+  const free = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (!grid[r][c]) free.push([r, c]);
+  if (!free.length) return;
+  const [r, c] = free[Math.floor(Math.random() * free.length)];
+  const t = { id: nextId++, v: Math.random() < 0.9 ? 2 : 4, r, c, fr: r, fc: c, born: performance.now(), pop: 0 };
+  grid[r][c] = t; tiles.push(t);
+}
+
+/* The cells of one row/column, ordered from the edge the tiles slide toward. */
+function lineCells(dir, i) {
+  const cells = [];
+  for (let j = 0; j < N; j++) {
+    if (dir === 'up') cells.push([j, i]);
+    else if (dir === 'down') cells.push([N - 1 - j, i]);
+    else if (dir === 'left') cells.push([i, j]);
+    else cells.push([i, N - 1 - j]);
+  }
+  return cells;
+}
+
+function slide(dir) {
+  if (state !== 'play') return;
+  if (anim) finishAnim();
+  const ng = emptyGrid();
+  let moved = false, gained = 0;
+  ghosts = [];
+  tiles.forEach(t => { t.fr = t.r; t.fc = t.c; });
+  for (let i = 0; i < N; i++) {
+    const cells = lineCells(dir, i);
+    let slot = 0, prev = null;
+    for (const [r, c] of cells) {
+      const t = grid[r][c];
+      if (!t) continue;
+      if (prev && prev.v === t.v && !prev.merging) {
+        // merge: t slides onto prev and disappears; prev doubles when the slide ends
+        prev.merging = true;
+        t.r = prev.r; t.c = prev.c;
+        ghosts.push(t);
+        gained += prev.v * 2;
+        moved = true;
+      } else {
+        const [nr, nc] = cells[slot++];
+        if (nr !== t.r || nc !== t.c) moved = true;
+        t.r = nr; t.c = nc;
+        ng[nr][nc] = t;
+        prev = t;
+      }
+    }
+  }
+  if (!moved) { sound.beep(110, 0.04, { type: 'triangle', vol: 0.03 }); return; }
+  grid = ng;
+  tiles = tiles.filter(t => !ghosts.includes(t));
+  score += gained;
+  if (gained) scorePops.push({ v: gained, t0: performance.now() });
+  anim = { t0: performance.now() };
+  if (gained) sound.beep(330 + Math.log2(gained) * 45, 0.07, { to: 900 });
+  else sound.beep(240, 0.03, { vol: 0.03 });
+}
+
+function finishAnim() {
+  const now = performance.now();
+  tiles.forEach(t => {
+    t.fr = t.r; t.fc = t.c;
+    if (t.merging) { t.v *= 2; t.merging = false; t.pop = now; if (t.v === 2048 && !won) won = true; }
+  });
+  ghosts = [];
+  anim = null;
+  addRandomTile();
+  if (score > best) { best = score; newBest = true; store.set(BEST_KEY, best); }
+  if (won && !keepGoing && state === 'play') {
+    state = 'won'; overAt = now;
+    [523, 659, 784, 1046, 1318].forEach((f, i) => sound.beep(f, 0.1, { at: i * 0.09 }));
+  } else if (!canMove()) {
+    gameOver();
+  }
+  syncButtons();
+}
+
+function canMove() {
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const t = grid[r][c];
+    if (!t) return true;
+    if (c < N - 1 && grid[r][c + 1] && grid[r][c + 1].v === t.v) return true;
+    if (r < N - 1 && grid[r + 1][c] && grid[r + 1][c].v === t.v) return true;
+  }
+  return false;
+}
+
+/* ---------- Game flow ---------- */
+function startGame() {
+  grid = emptyGrid(); tiles = []; ghosts = []; scorePops = [];
+  score = 0; won = false; keepGoing = false; newBest = false; anim = null;
+  addRandomTile(); addRandomTile();
+  state = 'play';
+  sound.beep(523, 0.07); sound.beep(784, 0.1, { at: 0.08 });
+  syncButtons();
+}
+
+function togglePause() {
+  if (state === 'play') { if (anim) finishAnim(); if (state === 'play') { state = 'pause'; sound.beep(330, 0.06); } }
+  else if (state === 'pause') { state = 'play'; sound.beep(440, 0.06); }
+  syncButtons();
+}
+
+function gameOver() {
+  state = 'over'; overAt = performance.now();
+  sound.beep(392, 0.12, { type: 'sawtooth' });
+  sound.beep(262, 0.14, { type: 'sawtooth', at: 0.12 });
+  sound.beep(131, 0.35, { type: 'sawtooth', at: 0.26 });
+}
+
+/* ---------- Drawing ---------- */
+function text(str, x, y, color, size, align = 'center', glow = 8) {
+  ctx.font = `bold ${size}px ${FONT}`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.shadowColor = color; ctx.shadowBlur = glow;
+  ctx.fillStyle = color; ctx.fillText(str, x, y);
+  ctx.shadowBlur = 0;
+}
+
+function drawButton(label, cy, color) {
+  const w = 210, h = 42, x = (W - w) / 2, y = cy - h / 2;
+  ctx.fillStyle = '#10102e'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.shadowColor = color; ctx.shadowBlur = 10;
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.shadowBlur = 0;
+  text(label, W / 2, cy + 1, color, 18, 'center', 6);
+}
+
+function cellXY(r, c) { return [PAD + c * (TILE + PAD), HUD + PAD + r * (TILE + PAD)]; }
+
+function drawTile(t, r, c, scale) {
+  const [x, y] = cellXY(r, c);
+  const color = TILE_COLORS[Math.min(t.v, 2048)] || '#ffffff';
+  const s = TILE * scale, off = (TILE - s) / 2;
+  ctx.fillStyle = '#0a0a1e';
+  ctx.fillRect(x + off, y + off, s, s);
+  ctx.shadowColor = color; ctx.shadowBlur = t.v >= 128 ? 18 : 10;
+  ctx.strokeStyle = color; ctx.lineWidth = 4;
+  ctx.strokeRect(x + off + 2, y + off + 2, s - 4, s - 4);
+  ctx.shadowBlur = 0;
+  // inner fill tint grows with value
+  ctx.globalAlpha = Math.min(0.35, 0.08 + Math.log2(t.v) * 0.025);
+  ctx.fillStyle = color; ctx.fillRect(x + off + 4, y + off + 4, s - 8, s - 8);
+  ctx.globalAlpha = 1;
+  const digits = String(t.v).length;
+  const size = (digits <= 2 ? 38 : digits === 3 ? 32 : digits === 4 ? 26 : 20) * scale;
+  text(String(t.v), x + TILE / 2, y + TILE / 2 + 2, color, Math.max(1, Math.round(size)), 'center', 10);
+}
+
+function scoreBox(label, value, x, color) {
+  ctx.fillStyle = COLOR.board; ctx.fillRect(x, 16, 104, 52);
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.strokeRect(x + 1, 17, 102, 50);
+  text(label, x + 52, 30, COLOR.dim, 12, 'center', 0);
+  text(String(value), x + 52, 52, color, 20, 'center', 6);
+}
+
+function draw(now) {
+  ctx.fillStyle = COLOR.bg; ctx.fillRect(0, 0, W, H);
+
+  // HUD
+  text('2048', 14, 30, COLOR.yellow, 34, 'left', 14);
+  text('MERGE', 16, 62, COLOR.pink, 16, 'left', 6);
+  scoreBox('SCORE', score, W - 228, COLOR.cyan);
+  scoreBox('BEST', best, W - 116, COLOR.pink);
+  scorePops = scorePops.filter(p => now - p.t0 < 700);
+  for (const p of scorePops) {
+    const k = (now - p.t0) / 700;
+    ctx.globalAlpha = 1 - k;
+    text('+' + p.v, W - 236, 52 - k * 22, COLOR.yellow, 16, 'right', 6);
+    ctx.globalAlpha = 1;
+  }
+
+  // board
+  ctx.fillStyle = COLOR.board; ctx.fillRect(0, HUD, W, W);
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const [x, y] = cellXY(r, c);
+    ctx.fillStyle = COLOR.empty; ctx.fillRect(x, y, TILE, TILE);
+  }
+
+  if (tiles) {
+    const k = anim ? Math.min(1, (now - anim.t0) / SLIDE_MS) : 1;
+    const ease = 1 - Math.pow(1 - k, 3);
+    const lerp = t => [t.fr + (t.r - t.fr) * ease, t.fc + (t.c - t.fc) * ease];
+    for (const g of ghosts) { const [r, c] = lerp(g); drawTile(g, r, c, 1); }
+    for (const t of tiles) {
+      const [r, c] = lerp(t);
+      let scale = 1;
+      if (!anim && now - t.born < POP_MS) scale = 0.3 + 0.7 * ((now - t.born) / POP_MS);        // new tile grows in
+      else if (!anim && t.pop && now - t.pop < POP_MS) scale = 1 + 0.12 * Math.sin(Math.PI * (now - t.pop) / POP_MS); // merged tile bumps
+      drawTile(t, r, c, scale);
+    }
+    if (anim && k >= 1) finishAnim();
+  }
+
+  // overlays
+  const blink = Math.floor(now / 500) % 2 === 0;
+  if (state !== 'play') { ctx.fillStyle = 'rgba(3,3,12,0.78)'; ctx.fillRect(0, HUD, W, W); }
+  const mid = HUD + W / 2;
+  if (state === 'start') {
+    text('2048', W / 2, mid - 80, COLOR.yellow, 72, 'center', 22);
+    text('MERGE', W / 2, mid - 20, COLOR.pink, 40, 'center', 16);
+    text('Slide. Match. Merge to 2048.', W / 2, mid + 30, COLOR.text, 15, 'center', 0);
+    if (blink) text('PRESS SPACE / TAP', W / 2, mid + 85, COLOR.cyan, 20, 'center', 10);
+  } else if (state === 'pause') {
+    text('PAUSED', W / 2, mid - 20, COLOR.yellow, 44, 'center', 16);
+    text('Space / P to resume', W / 2, mid + 30, COLOR.text, 16, 'center', 0);
+  } else if (state === 'won') {
+    text('2048!', W / 2, mid - 90, '#ffffff', 64, 'center', 24);
+    text('YOU MADE IT', W / 2, mid - 35, COLOR.yellow, 22, 'center', 8);
+    text('SCORE ' + score, W / 2, mid, COLOR.text, 18, 'center', 4);
+    drawButton('KEEP GOING', mid + 60, COLOR.cyan);
+    text('Space / tap  ·  N = new game', W / 2, mid + 105, COLOR.dim, 13, 'center', 0);
+  } else if (state === 'over') {
+    text('GAME OVER', W / 2, mid - 90, COLOR.red, 46, 'center', 18);
+    text('SCORE ' + score, W / 2, mid - 30, COLOR.text, 24, 'center', 4);
+    text(newBest ? 'NEW BEST!' : 'BEST ' + best, W / 2, mid + 5, newBest ? COLOR.yellow : COLOR.pink, 18, 'center', 8);
+    drawButton('PLAY AGAIN', mid + 70, COLOR.cyan);
+    text('Space / tap', W / 2, mid + 112, COLOR.dim, 13, 'center', 0);
+  }
+}
+
+/* ---------- Main loop ---------- */
+function frame(now) {
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Input ---------- */
+// Space / tap / pause button: start, continue, restart or pause depending on state.
+function primary() {
+  if (state === 'start') startGame();
+  else if (state === 'won') { if (performance.now() - overAt > 400) { keepGoing = true; state = 'play'; syncButtons(); if (!canMove()) gameOver(); } }
+  else if (state === 'over') { if (performance.now() - overAt > 400) startGame(); }
+  else togglePause();
+}
+
+const KEYMAP = {
+  ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right'
+};
+window.addEventListener('keydown', e => {
+  sound.unlock();
+  const d = KEYMAP[e.code];
+  if (d) { e.preventDefault(); if (state === 'start') startGame(); else slide(d); return; }
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (!e.repeat) primary(); }
+  else if (e.code === 'KeyP' || e.code === 'Escape') { if (state === 'play' || state === 'pause') togglePause(); }
+  else if (e.code === 'KeyN') { if (state !== 'start') startGame(); }
+  else if (e.code === 'KeyM') sound.toggle();
+});
+
+// Swipe anywhere on the canvas; a short tap acts like Space on overlay screens.
+let swipe = null;
+canvas.addEventListener('pointerdown', e => {
+  sound.unlock();
+  if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+  swipe = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener('pointerup', e => {
+  if (!swipe) return;
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+  swipe = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) { if (state !== 'play') primary(); return; }
+  if (state === 'play') slide(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+});
+canvas.addEventListener('pointercancel', () => { swipe = null; });
+
+const newBtn = document.getElementById('newBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const muteBtn = document.getElementById('muteBtn');
+newBtn.addEventListener('click', () => { sound.unlock(); startGame(); newBtn.blur(); });
+pauseBtn.addEventListener('click', () => {
+  sound.unlock();
+  if (state === 'play' || state === 'pause') togglePause(); else primary();
+  pauseBtn.blur();
+});
+muteBtn.addEventListener('click', () => { sound.unlock(); sound.toggle(); muteBtn.blur(); });
+
+function syncButtons() {
+  pauseBtn.textContent = state === 'pause' ? 'RESUME' : state === 'play' ? 'PAUSE' : 'PLAY';
+  muteBtn.textContent = sound.muted ? 'MUTED' : 'SOUND ON';
+}
+
+/* ---------- Fit canvas to the viewport (keeps aspect ratio, no horizontal scroll) ---------- */
+function fit() {
+  const header = document.querySelector('header');
+  const availW = Math.min(document.documentElement.clientWidth - 32, 560);
+  const availH = Math.max(300, window.innerHeight - header.offsetHeight - 16);
+  const s = Math.min(availW / W, availH / H);
+  canvas.style.width = Math.floor(W * s) + 'px';
+  canvas.style.height = Math.floor(H * s) + 'px';
+}
+window.addEventListener('resize', fit);
+
+syncButtons();
+fit();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

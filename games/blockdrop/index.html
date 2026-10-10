@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Block Drop – Free Retro Browser Game</title>
+<meta name="description" content="Block Drop: a free neon falling-block puzzle. Rotate and drop the pieces, clear lines and level up. Plays in your browser on desktop and phone.">
+<meta name="theme-color" content="#05050f">
+<!--
+  Block Drop
+  A single-file retro falling-block puzzle (HTML5 canvas, no dependencies).
+  Controls: left/right (A/D) move, up (W/X) rotate, Z rotate back, down (S) soft drop,
+  Enter hard drop, Space or P pause, M mute. Touch: on-screen buttons, or swipe / tap the board.
+
+  License: personal and commercial use of the game in your own projects allowed; do not resell this source as-is.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #05050f; color: #d8e1ff;
+    font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+    overflow-x: hidden; -webkit-text-size-adjust: 100%;
+  }
+  body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+  header {
+    width: 100%; max-width: 560px; padding: 10px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  h1 {
+    margin: 0; font-size: 20px; letter-spacing: 3px; text-transform: uppercase;
+    color: #b04bff; text-shadow: 0 0 8px #b04bff;
+  }
+  .btns { display: flex; gap: 8px; }
+  .btn {
+    font: inherit; font-weight: bold; font-size: 13px; letter-spacing: 1px;
+    background: #10102e; color: #d8e1ff; border: 2px solid #3d3dff;
+    padding: 6px 10px; cursor: pointer; border-radius: 0;
+    -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation;
+  }
+  .btn:hover { border-color: #00e5ff; color: #00e5ff; }
+  .btn:active { background: #23235e; }
+  main { width: 100%; padding: 0 16px; display: flex; flex-direction: column; align-items: center; }
+  canvas {
+    display: block; max-width: 100%;
+    background: #05050f; border: 2px solid #1f1f5a;
+    box-shadow: 0 0 24px rgba(176, 75, 255, .25);
+    image-rendering: pixelated; touch-action: none; user-select: none;
+  }
+  /* On-screen buttons: only shown on touch devices */
+  .pad { display: none; margin-top: 10px; gap: 6px; grid-template-columns: repeat(5, 58px); }
+  .pad .btn { height: 54px; font-size: 20px; padding: 0; }
+  @media (pointer: coarse) { .pad { display: grid; } }
+  @media (max-width: 420px) {
+    header { flex-wrap: wrap; }
+    h1 { font-size: 16px; letter-spacing: 2px; }
+    .btns { gap: 6px; }
+    .btn { font-size: 11px; padding: 5px 7px; }
+  }
+  footer {
+    width: 100%; max-width: 560px; padding: 14px 16px 28px;
+    font-size: 13px; line-height: 1.5; color: #8a93c4; text-align: center;
+  }
+  footer kbd { color: #ffe600; font-family: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Block Drop</h1>
+  <div class="btns">
+    <button class="btn" id="pauseBtn" type="button" aria-label="Pause">PAUSE</button>
+    <button class="btn" id="muteBtn" type="button" aria-label="Toggle sound">SOUND ON</button>
+  </div>
+</header>
+
+<main>
+  <canvas id="game" aria-label="Block Drop game"></canvas>
+  <div class="pad" aria-label="Touch controls">
+    <button class="btn" data-act="left" type="button" aria-label="Move left">&#9664;</button>
+    <button class="btn" data-act="rotate" type="button" aria-label="Rotate">&#10227;</button>
+    <button class="btn" data-act="right" type="button" aria-label="Move right">&#9654;</button>
+    <button class="btn" data-act="down" type="button" aria-label="Soft drop">&#9660;</button>
+    <button class="btn" data-act="drop" type="button" aria-label="Hard drop">&#10515;</button>
+  </div>
+</main>
+
+<footer>
+  <p><kbd>&larr;&rarr;</kbd> move &middot; <kbd>&uarr;</kbd>/<kbd>X</kbd> rotate &middot; <kbd>Z</kbd> rotate back &middot; <kbd>&darr;</kbd> soft drop &middot; <kbd>Enter</kbd> hard drop &middot; <kbd>Space</kbd>/<kbd>P</kbd> pause &middot; <kbd>M</kbd> mute</p>
+  <p>Touch: swipe left/right to move, tap to rotate, swipe down to drop.</p>
+  <div class="gshop"><a href="../">More free games</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973" target="_blank" rel="noopener" data-buy="tip">Tip what you like</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973/3USD" target="_blank" rel="noopener" data-buy="games">Offline pack + source: $3</a></div><img src="https://hits.sh/vampyer.github.io/app-copy/site.svg" alt="" width="1" height="1" style="position:absolute;opacity:0"><script>document.querySelectorAll('[data-buy]').forEach(a=>a.addEventListener('click',()=>{new Image().src='https://hits.sh/vampyer.github.io/app-copy/buy-'+a.dataset.buy+'.svg'}));</script><style>.gshop{font:14px/1.6 system-ui,sans-serif;text-align:center;padding:12px 16px;color:#aab}.gshop a{color:#7fe3c4}</style>
+</footer>
+
+<script>
+"use strict";
+
+/* ---------- Storage (wrapped: localStorage can throw in private mode) ---------- */
+const store = {
+  get(key, fallback) {
+    try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); }
+    catch (e) { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+  }
+};
+
+/* ---------- Sound: tiny WebAudio beeper, created on first user input ---------- */
+const sound = {
+  ctx: null,
+  muted: store.get('retro.muted', false),
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { try { this.ctx = new AC(); } catch (e) { this.ctx = null; } }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  // freq in Hz, dur in seconds; opts: type, vol, at (delay), to (end freq for a slide)
+  beep(freq, dur = 0.08, opts = {}) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime + (opts.at || 0);
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = opts.type || 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    if (opts.to) osc.frequency.exponentialRampToValueAtTime(opts.to, t + dur);
+    gain.gain.setValueAtTime(opts.vol || 0.05, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  },
+  toggle() { this.muted = !this.muted; store.set('retro.muted', this.muted); syncButtons(); }
+};
+
+/* ---------- Setup ---------- */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const COLS = 10, ROWS = 20, CELL = 24;
+const BX = 10, BY = 10;                          // board offset inside the canvas
+const PX = BX + COLS * CELL + 14;                // side panel x
+const W = PX + 120, H = BY * 2 + ROWS * CELL;
+canvas.width = W; canvas.height = H;
+const FONT = '"Courier New", ui-monospace, Menlo, Consolas, monospace';
+const COLOR = { bg: '#05050f', well: '#08081c', grid: '#12123a', text: '#d8e1ff', dim: '#8a93c4',
+  yellow: '#ffe600', pink: '#ff2bd6', red: '#ff3355', cyan: '#00e5ff', purple: '#b04bff' };
+const BEST_KEY = 'blockDrop.best';
+const LOCK_MS = 450, CLEAR_MS = 220;
+
+const SHAPES = {
+  I: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]],
+  O: [[1, 1], [1, 1]],
+  T: [[0, 1, 0], [1, 1, 1], [0, 0, 0]],
+  S: [[0, 1, 1], [1, 1, 0], [0, 0, 0]],
+  Z: [[1, 1, 0], [0, 1, 1], [0, 0, 0]],
+  J: [[1, 0, 0], [1, 1, 1], [0, 0, 0]],
+  L: [[0, 0, 1], [1, 1, 1], [0, 0, 0]]
+};
+const PIECE_COLORS = { I: '#00e5ff', O: '#ffe600', T: '#b04bff', S: '#39ff14', Z: '#ff3355', J: '#4b6bff', L: '#ff9f1c' };
+const LINE_POINTS = [0, 100, 300, 500, 800];
+
+let state = 'start';            // start | play | pause | over
+let board, piece, nextType, bag, score, lines, level;
+let dropAcc = 0, lockTimer = 0, lockResets = 0, softDrop = false;
+let clearing = null;            // { rows: [...], t: ms elapsed } while a line-clear flash plays
+let lastTime = 0, overAt = 0, newBest = false, popup = null;
+let best = store.get(BEST_KEY, 0);
+
+/* ---------- Pieces ---------- */
+// "7-bag" randomiser: every piece appears once per 7 before any repeats.
+function nextFromBag() {
+  if (!bag.length) {
+    bag = Object.keys(SHAPES);
+    for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+  }
+  return bag.pop();
+}
+
+function rotateCW(m) { return m[0].map((_, i) => m.map(row => row[i]).reverse()); }
+function rotateCCW(m) { return rotateCW(rotateCW(rotateCW(m))); }
+
+function collides(m, x, y) {
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) {
+    if (!m[r][c]) continue;
+    const nx = x + c, ny = y + r;
+    if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+    if (ny >= 0 && board[ny][nx]) return true;
+  }
+  return false;
+}
+
+function spawn() {
+  const type = nextType;
+  nextType = nextFromBag();
+  const m = SHAPES[type].map(r => r.slice());
+  piece = { type, m, x: Math.floor((COLS - m[0].length) / 2), y: type === 'I' ? -1 : 0 };
+  dropAcc = 0; lockTimer = 0; lockResets = 0;
+  if (collides(piece.m, piece.x, piece.y)) gameOver();
+}
+
+function dropInterval() {
+  const base = Math.max(70, 800 * Math.pow(0.84, level - 1));
+  return softDrop ? Math.min(base, 45) : base;
+}
+
+/* A successful move or rotation on the floor buys a little more time (capped). */
+function afterMove() {
+  if (lockTimer > 0 && lockResets < 15) { lockTimer = 0; lockResets++; }
+}
+
+function move(dx) {
+  if (!canAct()) return;
+  if (!collides(piece.m, piece.x + dx, piece.y)) { piece.x += dx; afterMove(); sound.beep(200, 0.025, { vol: 0.03 }); }
+}
+
+function rotate(dirCW = true) {
+  if (!canAct() || piece.type === 'O') return;
+  const m = dirCW ? rotateCW(piece.m) : rotateCCW(piece.m);
+  for (const k of [0, -1, 1, -2, 2]) {           // simple wall kicks
+    for (const ky of [0, -1]) {
+      if (!collides(m, piece.x + k, piece.y + ky)) {
+        piece.m = m; piece.x += k; piece.y += ky; afterMove();
+        sound.beep(440, 0.03, { vol: 0.03 });
+        return;
+      }
+    }
+  }
+}
+
+function softStep() {
+  if (!canAct()) return;
+  if (!collides(piece.m, piece.x, piece.y + 1)) { piece.y++; score += 1; dropAcc = 0; }
+}
+
+function hardDrop() {
+  if (!canAct()) return;
+  let n = 0;
+  while (!collides(piece.m, piece.x, piece.y + 1)) { piece.y++; n++; }
+  score += n * 2;
+  sound.beep(140, 0.08, { type: 'triangle' });
+  lock();
+}
+
+function canAct() { return state === 'play' && !clearing && piece; }
+
+function ghostY() {
+  let y = piece.y;
+  while (!collides(piece.m, piece.x, y + 1)) y++;
+  return y;
+}
+
+function lock() {
+  const { m, x, y, type } = piece;
+  let topOut = false;
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) {
+    if (!m[r][c]) continue;
+    if (y + r < 0) { topOut = true; continue; }
+    board[y + r][x + c] = type;
+  }
+  piece = null;
+  if (topOut) { gameOver(); return; }
+  sound.beep(110, 0.05, { type: 'triangle', vol: 0.04 });
+
+  const full = [];
+  for (let r = 0; r < ROWS; r++) if (board[r].every(Boolean)) full.push(r);
+  if (full.length) {
+    clearing = { rows: full, t: 0 };
+    const pts = LINE_POINTS[full.length] * level;
+    score += pts;
+    popup = { text: (full.length === 4 ? 'QUAD! ' : '') + '+' + pts, t: 0 };
+    full.forEach((_, i) => sound.beep(523 + i * 130, 0.08, { at: i * 0.06 }));
+  } else {
+    spawn();
+  }
+}
+
+function finishClear() {
+  const rows = clearing.rows;
+  board = board.filter((_, r) => !rows.includes(r));
+  while (board.length < ROWS) board.unshift(Array(COLS).fill(null));
+  const before = level;
+  lines += rows.length;
+  level = 1 + Math.floor(lines / 10);
+  if (level > before) [659, 784, 988, 1318].forEach((f, i) => sound.beep(f, 0.08, { at: 0.1 + i * 0.07 }));
+  clearing = null;
+  spawn();
+}
+
+/* ---------- Game flow ---------- */
+function startGame() {
+  board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  bag = []; score = 0; lines = 0; level = 1; newBest = false;
+  clearing = null; popup = null; softDrop = false;
+  nextType = nextFromBag();
+  state = 'play';
+  spawn();
+  sound.beep(523, 0.07); sound.beep(784, 0.1, { at: 0.08 });
+  syncButtons();
+}
+
+function togglePause() {
+  if (state === 'play') { state = 'pause'; sound.beep(330, 0.06); }
+  else if (state === 'pause') { state = 'play'; sound.beep(440, 0.06); }
+  syncButtons();
+}
+
+function gameOver() {
+  state = 'over'; overAt = performance.now();
+  if (score > best) { best = score; newBest = true; store.set(BEST_KEY, best); }
+  sound.beep(392, 0.12, { type: 'sawtooth' });
+  sound.beep(262, 0.14, { type: 'sawtooth', at: 0.12 });
+  sound.beep(131, 0.35, { type: 'sawtooth', at: 0.26 });
+  syncButtons();
+}
+
+function update(dt) {
+  if (popup) { popup.t += dt; if (popup.t > 900) popup = null; }
+  if (clearing) { clearing.t += dt; if (clearing.t >= CLEAR_MS) finishClear(); return; }
+  if (!piece) return;
+  if (collides(piece.m, piece.x, piece.y + 1)) {
+    // resting on something: wait out the lock delay
+    lockTimer += dt;
+    if (lockTimer >= LOCK_MS) lock();
+  } else {
+    lockTimer = 0;
+    dropAcc += dt;
+    while (dropAcc >= dropInterval() && !collides(piece.m, piece.x, piece.y + 1)) {
+      dropAcc -= dropInterval();
+      piece.y++;
+      if (softDrop) score += 1;
+    }
+  }
+}
+
+/* ---------- Drawing ---------- */
+function text(str, x, y, color, size, align = 'center', glow = 8) {
+  ctx.font = `bold ${size}px ${FONT}`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.shadowColor = color; ctx.shadowBlur = glow;
+  ctx.fillStyle = color; ctx.fillText(str, x, y);
+  ctx.shadowBlur = 0;
+}
+
+function drawCell(px, py, color, size = CELL, alpha = 1) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(px + 1, py + 1, size - 2, size - 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';      // bevel highlight
+  ctx.fillRect(px + 1, py + 1, size - 2, 3);
+  ctx.fillRect(px + 1, py + 1, 3, size - 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';            // bevel shadow
+  ctx.fillRect(px + 1, py + size - 4, size - 2, 3);
+  ctx.fillRect(px + size - 4, py + 1, 3, size - 2);
+  ctx.globalAlpha = 1;
+}
+
+function drawMatrix(m, x, y, color, size, alpha) {
+  for (let r = 0; r < m.length; r++) for (let c = 0; c < m[r].length; c++) {
+    if (m[r][c]) drawCell(x + c * size, y + r * size, color, size, alpha);
+  }
+}
+
+function drawButton(label, cx, cy, color) {
+  const w = 190, h = 40, x = cx - w / 2, y = cy - h / 2;
+  ctx.fillStyle = '#10102e'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.shadowColor = color; ctx.shadowBlur = 10;
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.shadowBlur = 0;
+  text(label, cx, cy + 1, color, 18, 'center', 6);
+}
+
+function panelStat(label, value, y, color) {
+  text(label, PX, y, COLOR.dim, 13, 'left', 0);
+  text(String(value), PX, y + 20, color, 20, 'left', 6);
+}
+
+function draw(t) {
+  ctx.fillStyle = COLOR.bg; ctx.fillRect(0, 0, W, H);
+
+  // well
+  ctx.fillStyle = COLOR.well; ctx.fillRect(BX, BY, COLS * CELL, ROWS * CELL);
+  ctx.strokeStyle = COLOR.purple; ctx.lineWidth = 2;
+  ctx.shadowColor = COLOR.purple; ctx.shadowBlur = 10;
+  ctx.strokeRect(BX - 2, BY - 2, COLS * CELL + 4, ROWS * CELL + 4);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = COLOR.grid;
+  for (let r = 1; r < ROWS; r++) ctx.fillRect(BX, BY + r * CELL, COLS * CELL, 1);
+  for (let c = 1; c < COLS; c++) ctx.fillRect(BX + c * CELL, BY, 1, ROWS * CELL);
+
+  if (board) {
+    // settled blocks (rows being cleared flash white)
+    const flash = clearing && Math.floor(clearing.t / 55) % 2 === 0;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const v = board[r][c];
+      if (!v) continue;
+      const col = clearing && clearing.rows.includes(r) ? (flash ? '#ffffff' : PIECE_COLORS[v]) : PIECE_COLORS[v];
+      drawCell(BX + c * CELL, BY + r * CELL, col);
+    }
+
+    if (piece && state !== 'over') {
+      // ghost piece shows where a hard drop will land
+      const gy = ghostY();
+      ctx.strokeStyle = PIECE_COLORS[piece.type]; ctx.lineWidth = 1; ctx.globalAlpha = 0.5;
+      for (let r = 0; r < piece.m.length; r++) for (let c = 0; c < piece.m[r].length; c++) {
+        if (piece.m[r][c] && gy + r >= 0) ctx.strokeRect(BX + (piece.x + c) * CELL + 2.5, BY + (gy + r) * CELL + 2.5, CELL - 5, CELL - 5);
+      }
+      ctx.globalAlpha = 1;
+      // active piece (clip cells above the well)
+      ctx.save();
+      ctx.beginPath(); ctx.rect(BX, BY, COLS * CELL, ROWS * CELL); ctx.clip();
+      ctx.shadowColor = PIECE_COLORS[piece.type]; ctx.shadowBlur = 10;
+      drawMatrix(piece.m, BX + piece.x * CELL, BY + piece.y * CELL, PIECE_COLORS[piece.type], CELL, 1);
+      ctx.restore();
+    }
+  }
+
+  // side panel
+  text('NEXT', PX, BY + 10, COLOR.dim, 13, 'left', 0);
+  ctx.strokeStyle = COLOR.grid; ctx.lineWidth = 2;
+  ctx.strokeRect(PX, BY + 22, 104, 76);
+  if (nextType && state !== 'start') {
+    const m = SHAPES[nextType], s = 18;
+    const rowsUsed = m.filter(r => r.some(Boolean));
+    const w = m[0].length * s, h = rowsUsed.length * s;
+    drawMatrix(rowsUsed, PX + 52 - w / 2, BY + 60 - h / 2, PIECE_COLORS[nextType], s, 1);
+  }
+  panelStat('SCORE', score || 0, BY + 130, COLOR.cyan);
+  panelStat('LINES', lines || 0, BY + 190, '#39ff14');
+  panelStat('LEVEL', level || 1, BY + 250, COLOR.yellow);
+  panelStat('BEST', best, BY + 310, COLOR.pink);
+
+  if (popup) {
+    ctx.globalAlpha = Math.max(0, 1 - popup.t / 900);
+    text(popup.text, BX + COLS * CELL / 2, BY + ROWS * CELL / 2 - popup.t / 20, COLOR.yellow, 26, 'center', 14);
+    ctx.globalAlpha = 1;
+  }
+
+  // overlays
+  const cx = BX + COLS * CELL / 2;
+  const blink = Math.floor(t / 500) % 2 === 0;
+  if (state !== 'play') { ctx.fillStyle = 'rgba(3,3,12,0.76)'; ctx.fillRect(BX, BY, COLS * CELL, ROWS * CELL); }
+  if (state === 'start') {
+    drawMatrix(SHAPES.T, cx - 36, 70, PIECE_COLORS.T, 24, 1);
+    text('BLOCK', cx, 170, COLOR.cyan, 46, 'center', 18);
+    text('DROP', cx, 218, COLOR.pink, 46, 'center', 18);
+    text('Stack. Clear. Repeat.', cx, 268, COLOR.text, 14, 'center', 0);
+    if (blink) text('SPACE / TAP', cx, 320, COLOR.yellow, 20, 'center', 10);
+    text('to start', cx, 346, COLOR.dim, 14, 'center', 0);
+  } else if (state === 'pause') {
+    text('PAUSED', cx, 220, COLOR.yellow, 38, 'center', 16);
+    text('Space / P to resume', cx, 265, COLOR.text, 14, 'center', 0);
+  } else if (state === 'over') {
+    text('GAME', cx, 130, COLOR.red, 44, 'center', 18);
+    text('OVER', cx, 176, COLOR.red, 44, 'center', 18);
+    text('SCORE ' + score, cx, 236, COLOR.text, 20, 'center', 4);
+    text('LINES ' + lines, cx, 264, '#39ff14', 16, 'center', 4);
+    text(newBest ? 'NEW BEST!' : 'BEST ' + best, cx, 296, newBest ? COLOR.yellow : COLOR.pink, 16, 'center', 8);
+    drawButton('PLAY AGAIN', cx, 360, COLOR.cyan);
+    text('Space / tap', cx, 400, COLOR.dim, 13, 'center', 0);
+  }
+}
+
+/* ---------- Main loop ---------- */
+function frame(t) {
+  const dt = Math.min(100, t - (lastTime || t));
+  lastTime = t;
+  if (state === 'play') update(dt);
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Input ---------- */
+// Space / tap / pause button: start, restart or pause depending on state.
+function primary() {
+  if (state === 'start') startGame();
+  else if (state === 'over') { if (performance.now() - overAt > 400) startGame(); }
+  else togglePause();
+}
+
+window.addEventListener('keydown', e => {
+  sound.unlock();
+  switch (e.code) {
+    case 'ArrowLeft': case 'KeyA': e.preventDefault(); move(-1); break;
+    case 'ArrowRight': case 'KeyD': e.preventDefault(); move(1); break;
+    case 'ArrowUp': case 'KeyW': case 'KeyX': e.preventDefault(); if (!e.repeat) rotate(true); break;
+    case 'KeyZ': if (!e.repeat) rotate(false); break;
+    case 'ArrowDown': case 'KeyS': e.preventDefault(); softDrop = true; softStep(); break;
+    case 'Enter': e.preventDefault(); if (!e.repeat) { if (state === 'play') hardDrop(); else primary(); } break;
+    case 'Space': e.preventDefault(); if (!e.repeat) primary(); break;
+    case 'KeyP': case 'Escape': if (state === 'play' || state === 'pause') togglePause(); break;
+    case 'KeyM': sound.toggle(); break;
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') softDrop = false;
+});
+window.addEventListener('blur', () => { softDrop = false; });
+
+// Board gestures: drag sideways to move (one column per ~22px), tap to rotate, flick down to hard drop.
+let gesture = null;
+canvas.addEventListener('pointerdown', e => {
+  sound.unlock();
+  if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+  gesture = { x0: e.clientX, y0: e.clientY, x: e.clientX, t: performance.now(), moved: false };
+});
+canvas.addEventListener('pointermove', e => {
+  if (!gesture || state !== 'play') return;
+  const step = 22;
+  while (e.clientX - gesture.x > step) { move(1); gesture.x += step; gesture.moved = true; }
+  while (gesture.x - e.clientX > step) { move(-1); gesture.x -= step; gesture.moved = true; }
+});
+canvas.addEventListener('pointerup', e => {
+  if (!gesture) return;
+  const dx = e.clientX - gesture.x0, dy = e.clientY - gesture.y0;
+  const dtm = performance.now() - gesture.t;
+  if (state !== 'play') { if (Math.abs(dx) < 20 && Math.abs(dy) < 20) primary(); }
+  else if (dy > 50 && dy > Math.abs(dx) && dtm < 400) hardDrop();
+  else if (!gesture.moved && Math.abs(dx) < 12 && Math.abs(dy) < 12) rotate(true);
+  gesture = null;
+});
+canvas.addEventListener('pointercancel', () => { gesture = null; });
+
+// Touch buttons; left / right / down repeat while held.
+document.querySelectorAll('[data-act]').forEach(btn => {
+  const act = btn.dataset.act;
+  let delay = null, repeat = null;
+  const stop = () => { clearTimeout(delay); clearInterval(repeat); delay = repeat = null; if (act === 'down') softDrop = false; };
+  const run = () => {
+    if (act === 'left') move(-1);
+    else if (act === 'right') move(1);
+    else if (act === 'down') softStep();
+  };
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault(); sound.unlock();
+    if (state !== 'play') { primary(); return; }
+    if (act === 'rotate') { rotate(true); return; }
+    if (act === 'drop') { hardDrop(); return; }
+    stop();
+    if (act === 'down') softDrop = true;
+    run();
+    delay = setTimeout(() => { repeat = setInterval(run, act === 'down' ? 45 : 70); }, 170);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => btn.addEventListener(ev, stop));
+});
+
+const pauseBtn = document.getElementById('pauseBtn');
+const muteBtn = document.getElementById('muteBtn');
+pauseBtn.addEventListener('click', () => { sound.unlock(); primary(); pauseBtn.blur(); });
+muteBtn.addEventListener('click', () => { sound.unlock(); sound.toggle(); muteBtn.blur(); });
+
+function syncButtons() {
+  pauseBtn.textContent = state === 'pause' ? 'RESUME' : state === 'play' ? 'PAUSE' : 'PLAY';
+  muteBtn.textContent = sound.muted ? 'MUTED' : 'SOUND ON';
+}
+
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') togglePause(); });
+
+/* ---------- Fit canvas to the viewport (keeps aspect ratio, no horizontal scroll) ---------- */
+function fit() {
+  const header = document.querySelector('header');
+  const pad = document.querySelector('.pad');
+  const padH = pad && getComputedStyle(pad).display !== 'none' ? pad.offsetHeight + 12 : 0;
+  const availW = Math.min(document.documentElement.clientWidth - 32, 560);
+  const availH = Math.max(300, window.innerHeight - header.offsetHeight - padH - 16);
+  const s = Math.min(availW / W, availH / H);
+  canvas.style.width = Math.floor(W * s) + 'px';
+  canvas.style.height = Math.floor(H * s) + 'px';
+}
+window.addEventListener('resize', fit);
+
+syncButtons();
+fit();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

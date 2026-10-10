@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neon Snake – Free Retro Browser Game</title>
+<meta name="description" content="Neon Snake: a free retro arcade snake game in glowing neon. Eat, grow and survive as the speed ramps up. Plays in your browser on desktop and phone.">
+<meta name="theme-color" content="#05050f">
+<!--
+  Neon Snake
+  A single-file retro snake game (HTML5 canvas, no dependencies).
+  Controls: arrows / WASD to steer, Space or P to pause, M to mute. Swipe or use the on-screen pad on touch screens.
+
+  License: personal and commercial use of the game in your own projects allowed; do not resell this source as-is.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #05050f; color: #d8e1ff;
+    font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+    overflow-x: hidden; -webkit-text-size-adjust: 100%;
+  }
+  body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+  header {
+    width: 100%; max-width: 560px; padding: 10px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  h1 {
+    margin: 0; font-size: 20px; letter-spacing: 3px; text-transform: uppercase;
+    color: #39ff14; text-shadow: 0 0 8px #39ff14;
+  }
+  .btns { display: flex; gap: 8px; }
+  .btn {
+    font: inherit; font-weight: bold; font-size: 13px; letter-spacing: 1px;
+    background: #10102e; color: #d8e1ff; border: 2px solid #3d3dff;
+    padding: 6px 10px; cursor: pointer; border-radius: 0;
+    -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation;
+  }
+  .btn:hover { border-color: #00e5ff; color: #00e5ff; }
+  .btn:active { background: #23235e; }
+  main { width: 100%; padding: 0 16px; display: flex; flex-direction: column; align-items: center; }
+  canvas {
+    display: block; max-width: 100%;
+    background: #05050f; border: 2px solid #1f1f5a;
+    box-shadow: 0 0 24px rgba(57, 255, 20, .22);
+    image-rendering: pixelated; touch-action: none; user-select: none;
+  }
+  /* On-screen d-pad: only shown on touch devices */
+  .pad {
+    display: none; margin-top: 12px;
+    grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 56px); gap: 6px;
+  }
+  .pad .btn { font-size: 22px; padding: 0; }
+  .pad [data-dir="up"]    { grid-column: 2; grid-row: 1; }
+  .pad [data-dir="left"]  { grid-column: 1; grid-row: 2; }
+  .pad [data-dir="right"] { grid-column: 3; grid-row: 2; }
+  .pad [data-dir="down"]  { grid-column: 2; grid-row: 3; }
+  @media (pointer: coarse) { .pad { display: grid; } }
+  @media (max-width: 420px) {
+    header { flex-wrap: wrap; }
+    h1 { font-size: 16px; letter-spacing: 2px; }
+    .btns { gap: 6px; }
+    .btn { font-size: 11px; padding: 5px 7px; }
+  }
+  footer {
+    width: 100%; max-width: 560px; padding: 14px 16px 28px;
+    font-size: 13px; line-height: 1.5; color: #8a93c4; text-align: center;
+  }
+  footer kbd { color: #ffe600; font-family: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Neon Snake</h1>
+  <div class="btns">
+    <button class="btn" id="pauseBtn" type="button" aria-label="Pause">PAUSE</button>
+    <button class="btn" id="muteBtn" type="button" aria-label="Toggle sound">SOUND ON</button>
+  </div>
+</header>
+
+<main>
+  <canvas id="game" aria-label="Neon Snake game"></canvas>
+  <div class="pad" aria-label="Direction pad">
+    <button class="btn" data-dir="up" type="button" aria-label="Up">&#9650;</button>
+    <button class="btn" data-dir="left" type="button" aria-label="Left">&#9664;</button>
+    <button class="btn" data-dir="right" type="button" aria-label="Right">&#9654;</button>
+    <button class="btn" data-dir="down" type="button" aria-label="Down">&#9660;</button>
+  </div>
+</main>
+
+<footer>
+  <p><kbd>Arrows</kbd>/<kbd>WASD</kbd> steer &middot; <kbd>Space</kbd>/<kbd>P</kbd> pause &middot; <kbd>M</kbd> mute &middot; swipe on touch screens</p>
+  <div class="gshop"><a href="../">More free games</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973" target="_blank" rel="noopener" data-buy="tip">Tip what you like</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973/3USD" target="_blank" rel="noopener" data-buy="games">Offline pack + source: $3</a></div><img src="https://hits.sh/vampyer.github.io/app-copy/site.svg" alt="" width="1" height="1" style="position:absolute;opacity:0"><script>document.querySelectorAll('[data-buy]').forEach(a=>a.addEventListener('click',()=>{new Image().src='https://hits.sh/vampyer.github.io/app-copy/buy-'+a.dataset.buy+'.svg'}));</script><style>.gshop{font:14px/1.6 system-ui,sans-serif;text-align:center;padding:12px 16px;color:#aab}.gshop a{color:#7fe3c4}</style>
+</footer>
+
+<script>
+"use strict";
+
+/* ---------- Storage (wrapped: localStorage can throw in private mode) ---------- */
+const store = {
+  get(key, fallback) {
+    try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); }
+    catch (e) { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+  }
+};
+
+/* ---------- Sound: tiny WebAudio beeper, created on first user input ---------- */
+const sound = {
+  ctx: null,
+  muted: store.get('retro.muted', false),
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) { try { this.ctx = new AC(); } catch (e) { this.ctx = null; } }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  // freq in Hz, dur in seconds; opts: type, vol, at (delay), to (end freq for a slide)
+  beep(freq, dur = 0.08, opts = {}) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime + (opts.at || 0);
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = opts.type || 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    if (opts.to) osc.frequency.exponentialRampToValueAtTime(opts.to, t + dur);
+    gain.gain.setValueAtTime(opts.vol || 0.05, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  },
+  toggle() { this.muted = !this.muted; store.set('retro.muted', this.muted); syncButtons(); }
+};
+
+/* ---------- Setup ---------- */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const COLS = 20, ROWS = 20, CELL = 20, HUD = 40;
+const W = COLS * CELL, H = ROWS * CELL + HUD;
+canvas.width = W; canvas.height = H;
+const FONT = '"Courier New", ui-monospace, Menlo, Consolas, monospace';
+const COLOR = {
+  bg: '#05050f', hud: '#0b0b24', grid: '#141440', head: '#c8ffb0', body: '#39ff14',
+  tail: '#00e5ff', food: '#ff2bd6', text: '#d8e1ff', yellow: '#ffe600', red: '#ff3355'
+};
+const BEST_KEY = 'neonSnake.best';
+
+let state = 'start';            // start | play | pause | over
+let snake, dir, queue, food, score, eaten, stepMs;
+let acc = 0, lastTime = 0, overAt = 0, newBest = false;
+let best = store.get(BEST_KEY, 0);
+let particles = [];
+
+function reset() {
+  snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }];
+  dir = { x: 1, y: 0 };
+  queue = [];
+  score = 0; eaten = 0; stepMs = 140; acc = 0;
+  particles = []; newBest = false;
+  placeFood();
+}
+
+function placeFood() {
+  let f;
+  do { f = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) }; }
+  while (snake.some(s => s.x === f.x && s.y === f.y));
+  food = f;
+}
+
+function startGame() {
+  reset();
+  state = 'play';
+  sound.beep(523, 0.07);
+  sound.beep(784, 0.1, { at: 0.08 });
+  syncButtons();
+}
+
+function togglePause() {
+  if (state === 'play') { state = 'pause'; sound.beep(330, 0.06); }
+  else if (state === 'pause') { state = 'play'; acc = 0; sound.beep(440, 0.06); }
+  syncButtons();
+}
+
+function gameOver() {
+  state = 'over';
+  overAt = performance.now();
+  if (score > best) { best = score; newBest = true; store.set(BEST_KEY, best); }
+  burst(snake[0].x, snake[0].y, COLOR.red, 30);
+  sound.beep(392, 0.12, { type: 'sawtooth' });
+  sound.beep(262, 0.14, { type: 'sawtooth', at: 0.12 });
+  sound.beep(131, 0.35, { type: 'sawtooth', at: 0.26 });
+  syncButtons();
+}
+
+/* Queue turns so quick double-taps (e.g. up then left) are not lost. */
+function turn(dx, dy) {
+  if (state !== 'play') return;
+  const ref = queue.length ? queue[queue.length - 1] : dir;
+  if ((ref.x === -dx && ref.y === -dy) || (ref.x === dx && ref.y === dy)) return;
+  if (queue.length < 3) queue.push({ x: dx, y: dy });
+}
+
+function step() {
+  if (queue.length) dir = queue.shift();
+  const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+  const eating = head.x === food.x && head.y === food.y;
+  const body = eating ? snake : snake.slice(0, -1);   // the tail moves away unless we grow
+  const hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
+  if (hitWall || body.some(s => s.x === head.x && s.y === head.y)) { gameOver(); return; }
+
+  snake.unshift(head);
+  if (eating) {
+    eaten++;
+    score += 10 + Math.floor(eaten / 5) * 5;
+    stepMs = Math.max(55, 140 - eaten * 3);         // speed up with every bite
+    burst(food.x, food.y, COLOR.food, 14);
+    sound.beep(600 + (eaten % 8) * 50, 0.07, { to: 1400 });
+    if (snake.length >= COLS * ROWS) { gameOver(); return; }
+    placeFood();
+  } else {
+    snake.pop();
+  }
+}
+
+/* ---------- Particles ---------- */
+function burst(cx, cy, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 120;
+    particles.push({
+      x: cx * CELL + CELL / 2, y: cy * CELL + CELL / 2,
+      vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.4, color
+    });
+  }
+}
+function updateParticles(dt) {
+  for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+  particles = particles.filter(p => p.life > 0);
+}
+
+/* ---------- Drawing ---------- */
+function text(str, x, y, color, size, align = 'center', glow = 8) {
+  ctx.font = `bold ${size}px ${FONT}`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.shadowColor = color; ctx.shadowBlur = glow;
+  ctx.fillStyle = color; ctx.fillText(str, x, y);
+  ctx.shadowBlur = 0;
+}
+
+function mix(a, b, t) { // blend two #rrggbb colours
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const r = Math.round(((pa >> 16) & 255) * (1 - t) + ((pb >> 16) & 255) * t);
+  const g = Math.round(((pa >> 8) & 255) * (1 - t) + ((pb >> 8) & 255) * t);
+  const bl = Math.round((pa & 255) * (1 - t) + (pb & 255) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function drawButton(label, cy) {
+  const w = 200, h = 40, x = (W - w) / 2, y = cy - h / 2;
+  ctx.fillStyle = '#10102e'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = COLOR.body; ctx.lineWidth = 2;
+  ctx.shadowColor = COLOR.body; ctx.shadowBlur = 10;
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.shadowBlur = 0;
+  text(label, W / 2, cy + 1, COLOR.body, 18, 'center', 6);
+}
+
+function draw(t) {
+  ctx.fillStyle = COLOR.bg; ctx.fillRect(0, 0, W, H);
+
+  // HUD
+  ctx.fillStyle = COLOR.hud; ctx.fillRect(0, 0, W, HUD);
+  ctx.fillStyle = COLOR.grid; ctx.fillRect(0, HUD - 2, W, 2);
+  text('SCORE ' + score, 10, HUD / 2, COLOR.body, 16, 'left', 6);
+  text('LV ' + (1 + Math.floor(eaten / 5)), W / 2, HUD / 2, COLOR.yellow, 16, 'center', 6);
+  text('BEST ' + best, W - 10, HUD / 2, COLOR.food, 16, 'right', 6);
+
+  ctx.save();
+  ctx.translate(0, HUD);
+
+  // grid dots
+  ctx.fillStyle = COLOR.grid;
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) ctx.fillRect(x * CELL + 9, y * CELL + 9, 2, 2);
+
+  if (state === 'start') { ctx.restore(); drawOverlay(t); return; }
+
+  // food (pulsing)
+  const pulse = 2 + Math.sin(t / 150) * 2;
+  ctx.shadowColor = COLOR.food; ctx.shadowBlur = 12 + pulse * 2;
+  ctx.fillStyle = COLOR.food;
+  ctx.fillRect(food.x * CELL + 4 - pulse / 2, food.y * CELL + 4 - pulse / 2, CELL - 8 + pulse, CELL - 8 + pulse);
+  ctx.shadowBlur = 0;
+
+  // snake: head is light, body fades from green to cyan
+  ctx.shadowBlur = 10;
+  snake.forEach((s, i) => {
+    const c = i === 0 ? COLOR.head : mix(COLOR.body, COLOR.tail, i / Math.max(1, snake.length - 1));
+    ctx.shadowColor = c; ctx.fillStyle = c;
+    ctx.fillRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2);
+  });
+  ctx.shadowBlur = 0;
+  // eyes
+  const h = snake[0];
+  ctx.fillStyle = '#05050f';
+  const ex = dir.y !== 0 ? [5, 13] : [dir.x > 0 ? 12 : 6, dir.x > 0 ? 12 : 6];
+  const ey = dir.x !== 0 ? [5, 13] : [dir.y > 0 ? 12 : 6, dir.y > 0 ? 12 : 6];
+  ctx.fillRect(h.x * CELL + ex[0], h.y * CELL + ey[0], 3, 3);
+  ctx.fillRect(h.x * CELL + ex[1], h.y * CELL + ey[1], 3, 3);
+
+  // particles
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 2));
+    ctx.fillStyle = p.color; ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+  drawOverlay(t);
+}
+
+function drawOverlay(t) {
+  const blink = Math.floor(t / 500) % 2 === 0;
+  if (state !== 'play') { ctx.fillStyle = 'rgba(3,3,12,0.72)'; ctx.fillRect(0, HUD, W, H - HUD); }
+  if (state === 'start') {
+    text('NEON', W / 2, 150, COLOR.body, 56, 'center', 20);
+    text('SNAKE', W / 2, 205, COLOR.food, 56, 'center', 20);
+    text('Eat. Grow. Don\'t crash.', W / 2, 262, COLOR.text, 16, 'center', 0);
+    if (blink) text('PRESS SPACE / TAP', W / 2, 320, COLOR.yellow, 20, 'center', 10);
+    text('BEST ' + best, W / 2, 380, COLOR.tail, 16, 'center', 6);
+  } else if (state === 'pause') {
+    text('PAUSED', W / 2, 220, COLOR.yellow, 44, 'center', 16);
+    text('Space / P to resume', W / 2, 275, COLOR.text, 16, 'center', 0);
+  } else if (state === 'over') {
+    text('GAME OVER', W / 2, 150, COLOR.red, 46, 'center', 18);
+    text('SCORE ' + score, W / 2, 215, COLOR.text, 24, 'center', 4);
+    text(newBest ? 'NEW BEST!' : 'BEST ' + best, W / 2, 255, newBest ? COLOR.yellow : COLOR.food, 18, 'center', 8);
+    drawButton('PLAY AGAIN', 330);
+    text('Space / tap', W / 2, 375, '#8a93c4', 14, 'center', 0);
+  }
+}
+
+/* ---------- Main loop ---------- */
+function frame(t) {
+  const dt = Math.min(100, t - (lastTime || t));
+  lastTime = t;
+  if (state === 'play') {
+    acc += dt;
+    while (acc >= stepMs && state === 'play') { acc -= stepMs; step(); }
+  }
+  updateParticles(dt / 1000);
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Input ---------- */
+const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+const KEYMAP = {
+  ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right'
+};
+
+// Space / tap / pause button: start, restart or pause depending on state.
+function primary() {
+  if (state === 'start') startGame();
+  else if (state === 'over') { if (performance.now() - overAt > 400) startGame(); }
+  else togglePause();
+}
+
+function steer(name) {
+  if (state === 'start') startGame();
+  if (state === 'play') turn(DIRS[name][0], DIRS[name][1]);
+}
+
+window.addEventListener('keydown', e => {
+  sound.unlock();
+  const d = KEYMAP[e.code];
+  if (d) { e.preventDefault(); steer(d); return; }
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); primary(); }
+  else if (e.code === 'KeyP' || e.code === 'Escape') { if (state === 'play' || state === 'pause') togglePause(); }
+  else if (e.code === 'KeyM') sound.toggle();
+});
+
+// Swipe on the canvas: steer as soon as the finger has moved far enough.
+let swipe = null;
+canvas.addEventListener('pointerdown', e => {
+  sound.unlock();
+  swipe = { x: e.clientX, y: e.clientY, moved: false };
+  if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!swipe) return;
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+  if (state === 'play') steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  swipe = { x: e.clientX, y: e.clientY, moved: true };
+});
+canvas.addEventListener('pointerup', () => {
+  if (swipe && !swipe.moved && state !== 'play') primary();   // a tap starts / restarts / resumes
+  swipe = null;
+});
+canvas.addEventListener('pointercancel', () => { swipe = null; });
+
+document.querySelectorAll('[data-dir]').forEach(btn => {
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault(); sound.unlock();
+    if (state === 'over' || state === 'pause') { primary(); return; }
+    steer(btn.dataset.dir);
+  });
+});
+
+const pauseBtn = document.getElementById('pauseBtn');
+const muteBtn = document.getElementById('muteBtn');
+pauseBtn.addEventListener('click', () => { sound.unlock(); primary(); pauseBtn.blur(); });
+muteBtn.addEventListener('click', () => { sound.unlock(); sound.toggle(); muteBtn.blur(); });
+
+function syncButtons() {
+  pauseBtn.textContent = state === 'pause' ? 'RESUME' : state === 'play' ? 'PAUSE' : 'PLAY';
+  muteBtn.textContent = sound.muted ? 'MUTED' : 'SOUND ON';
+}
+
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') togglePause(); });
+
+/* ---------- Fit canvas to the viewport (keeps aspect ratio, no horizontal scroll) ---------- */
+function fit() {
+  const header = document.querySelector('header');
+  const pad = document.querySelector('.pad');
+  const padH = pad && getComputedStyle(pad).display !== 'none' ? pad.offsetHeight + 12 : 0;
+  const availW = Math.min(document.documentElement.clientWidth - 32, 560);
+  const availH = Math.max(260, window.innerHeight - header.offsetHeight - padH - 16);
+  const s = Math.min(availW / W, availH / H);
+  canvas.style.width = Math.floor(W * s) + 'px';
+  canvas.style.height = Math.floor(H * s) + 'px';
+}
+window.addEventListener('resize', fit);
+
+reset();
+syncButtons();
+fit();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

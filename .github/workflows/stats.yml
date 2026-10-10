@@ -16,7 +16,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           KEY=7f3c9a1e5b2d4c6e8a0f1b3d5e7c9a2b
-          sleep 90
+          sleep 180
           BODY=$(jq -c --arg k "$KEY" '{host:"vampyer.github.io",key:$k,keyLocation:("https://vampyer.github.io/app-copy/"+$k+".txt"),urlList:.}' urls.json)
           curl -s -o /dev/null -w "indexnow %{http_code}\n" -H 'Content-Type: application/json' -d "$BODY" https://api.indexnow.org/indexnow | tee indexnow.txt
       - name: Read counters and site status
@@ -26,7 +26,7 @@ jobs:
           {
             echo "{"
             echo "\"checked_at\":\"$(date -u +%FT%TZ)\",\"site_http\":\"$SITE\","
-            for k in site dl buy-planner; do echo "\"$k\":\"$(get $k)\","; done
+            for k in site dl buy-planner buy-games buy-tip buy-templates buy-icons buy-food buy-dungeon buy-pixelbundle; do echo "\"$k\":\"$(get $k)\","; done
             echo "\"indexnow\":\"$(cat indexnow.txt 2>/dev/null)\",\"event\":\"${{ github.event_name }}\""
             echo "}"
           } > /tmp/stats.json

@@ -35,3 +35,8 @@ mark{background:var(--mark);color:#1b1f27;padding:0 .2em;border-radius:2px}
 .item img{width:100%;height:auto;border:1px solid var(--line);background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.08)}
 @media(max-width:640px){.item{grid-template-columns:1fr}}
 .shots{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}.shots img{height:260px;border:1px solid var(--line);background:#fff}
+.cards.wide{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.cards span{display:block}.price{color:var(--accent);font-weight:600;font-size:.9rem}
+.cards3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.card h3{margin:.6em 0 .2em}
+.hero-shot{width:100%;max-width:640px;height:auto;border:1px solid var(--line);border-radius:8px;display:block;margin:12px 0 16px}
