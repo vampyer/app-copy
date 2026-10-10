@@ -1,4 +1,4 @@
-# Small Good Things
+# Good Little Files
 
 Free printables, retro browser games, HTML landing page templates and 16x16 RPG pixel art, with small paid packs via PayPal.
 
