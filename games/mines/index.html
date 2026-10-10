@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neon Mines – Free Retro Browser Game</title>
+<meta name="description" content="Neon Mines: the free retro mine-finding logic puzzle. Clear the grid without hitting a mine. Three sizes, plays in your browser on desktop and phone.">
+<meta name="theme-color" content="#05050f">
+<!--
+  Neon Mines
+  A single-file retro mine-finding logic puzzle (HTML5 canvas, no dependencies).
+  Controls: click / tap to reveal, right-click or long-press (or Flag mode) to flag, N for a new game, M to mute.
+
+  License: personal and commercial use of the game in your own projects allowed; do not resell this source as-is.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #05050f; color: #d8e1ff;
+    font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+  body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+  header { width: 100%; max-width: 560px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: 3px; text-transform: uppercase; color: #ff3df0; text-shadow: 0 0 8px #ff3df0; }
+  .hud { display: flex; gap: 14px; font-size: 14px; }
+  .hud b { color: #39ffb0; }
+  .bar { width: 100%; max-width: 560px; padding: 0 16px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font: inherit; font-size: 13px; color: #d8e1ff; background: #11122a; border: 1px solid #3a3d7a; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+  button[aria-pressed="true"] { background: #39ffb0; color: #05050f; border-color: #39ffb0; }
+  button:focus-visible { outline: 2px solid #ff3df0; outline-offset: 2px; }
+  main { width: 100%; max-width: 560px; padding: 0 16px; }
+  canvas { width: 100%; height: auto; display: block; background: #0b0c1d; border: 2px solid #3a3d7a; border-radius: 6px; touch-action: manipulation; image-rendering: pixelated; }
+  .msg { min-height: 1.6em; text-align: center; margin: 10px 0 0; color: #ffe14d; text-shadow: 0 0 6px #ffe14d; }
+  footer { width: 100%; max-width: 560px; padding: 12px 16px 24px; font-size: 12px; color: #8088b8; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Neon Mines</h1>
+  <div class="hud"><span>MINES <b id="left">0</b></span><span>TIME <b id="time">0</b></span><span>BEST <b id="best">-</b></span></div>
+</header>
+<div class="bar">
+  <button data-size="easy" aria-pressed="true">Easy 9x9</button>
+  <button data-size="medium" aria-pressed="false">Medium 12x12</button>
+  <button data-size="hard" aria-pressed="false">Hard 16x16</button>
+  <button id="flag" aria-pressed="false">Flag mode</button>
+  <button id="new">New (N)</button>
+  <button id="mute">Sound on</button>
+</div>
+<main>
+  <canvas id="c" width="576" height="576" aria-label="Mine grid"></canvas>
+  <p class="msg" id="msg">Tap any square to start. The first tap is always safe.</p>
+</main>
+<footer>
+  Numbers show how many mines touch that square. Flag every mine and clear every safe square to win.
+  Right-click or long-press to flag. <div class="gshop"><a href="../">More free games</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973" target="_blank" rel="noopener" data-buy="tip">Tip what you like</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973/3USD" target="_blank" rel="noopener" data-buy="games">Offline pack + source: $3</a></div><img src="https://hits.sh/vampyer.github.io/app-copy/site.svg" alt="" width="1" height="1" style="position:absolute;opacity:0"><script>document.querySelectorAll('[data-buy]').forEach(a=>a.addEventListener('click',()=>{new Image().src='https://hits.sh/vampyer.github.io/app-copy/buy-'+a.dataset.buy+'.svg'}));</script><style>.gshop{font:14px/1.6 system-ui,sans-serif;text-align:center;padding:12px 16px;color:#aab}.gshop a{color:#7fe3c4}</style>
+</footer>
+<script>
+"use strict";
+const SIZES = { easy: [9, 10], medium: [12, 24], hard: [16, 40] };
+const COLORS = ["", "#39b6ff", "#39ffb0", "#ff3df0", "#ffe14d", "#ff7a3d", "#7af0ff", "#d8e1ff", "#ff4d6d"];
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+const $ = id => document.getElementById(id);
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+let size = "easy", N, MINES, grid, state, flagMode = false, started = 0, timer = null, elapsed = 0;
+let muted = store.get("mines-muted") === "1", audio = null;
+
+// --- sound: tiny WebAudio beeps, created on first input ---
+function beep(freq, dur, type) {
+  if (muted) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = type || "square"; o.frequency.value = freq; g.gain.value = 0.05;
+    o.connect(g); g.connect(audio.destination); o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dur); o.stop(audio.currentTime + dur);
+  } catch (e) {}
+}
+
+// --- game state ---
+function newGame() {
+  [N, MINES] = SIZES[size];
+  grid = Array.from({ length: N * N }, () => ({ mine: false, open: false, flag: false, n: 0 }));
+  state = "ready"; elapsed = 0; clearInterval(timer); timer = null;
+  $("msg").textContent = "Tap any square to start. The first tap is always safe.";
+  $("best").textContent = store.get("mines-best-" + size) || "-";
+  hud(); draw();
+}
+const idx = (x, y) => y * N + x;
+function around(i, fn) {
+  const x = i % N, y = (i / N) | 0;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const nx = x + dx, ny = y + dy;
+    if ((dx || dy) && nx >= 0 && ny >= 0 && nx < N && ny < N) fn(idx(nx, ny));
+  }
+}
+function placeMines(safe) {
+  const banned = new Set([safe]); around(safe, j => banned.add(j));   // first tap opens an area
+  let placed = 0;
+  while (placed < MINES) {
+    const i = Math.floor(Math.random() * N * N);
+    if (!banned.has(i) && !grid[i].mine) { grid[i].mine = true; placed++; }
+  }
+  grid.forEach((c, i) => { let n = 0; around(i, j => { if (grid[j].mine) n++; }); c.n = n; });
+}
+function reveal(i) {
+  const c = grid[i];
+  if (c.open || c.flag) return;
+  if (state === "ready") {
+    placeMines(i); state = "play"; started = Date.now(); $("msg").textContent = "";
+    timer = setInterval(() => { elapsed = Math.floor((Date.now() - started) / 1000); hud(); }, 250);
+  }
+  if (c.mine) { lose(i); return; }
+  const stack = [i];                                                  // flood fill empty squares
+  while (stack.length) {
+    const k = stack.pop(), d = grid[k];
+    if (d.open || d.flag) continue;
+    d.open = true;
+    if (d.n === 0) around(k, j => { if (!grid[j].open && !grid[j].mine) stack.push(j); });
+  }
+  beep(520, 0.05);
+  if (grid.every(d => d.open || d.mine)) win();
+}
+function chord(i) {                                                   // tap an open number to clear its neighbours
+  let flags = 0; around(i, j => { if (grid[j].flag) flags++; });
+  if (flags === grid[i].n) around(i, j => { if (state === "play") reveal(j); });
+}
+function toggleFlag(i) {
+  const c = grid[i];
+  if (c.open || state === "lost" || state === "won") return;
+  c.flag = !c.flag; beep(c.flag ? 760 : 380, 0.05, "triangle"); hud();
+}
+function lose(i) {
+  state = "lost"; clearInterval(timer);
+  grid.forEach(c => { if (c.mine) c.open = true; }); grid[i].boom = true;
+  $("msg").textContent = "BOOM. Press N or New to try again.";
+  beep(120, 0.4, "sawtooth");
+}
+function win() {
+  state = "won"; clearInterval(timer);
+  grid.forEach(c => { if (c.mine) c.flag = true; });
+  const best = +store.get("mines-best-" + size) || Infinity;
+  if (elapsed < best) store.set("mines-best-" + size, elapsed);
+  $("best").textContent = store.get("mines-best-" + size) || "-";
+  $("msg").textContent = "CLEARED in " + elapsed + "s! Press N to play again.";
+  [660, 880, 1100].forEach((f, k) => setTimeout(() => beep(f, 0.12), k * 120));
+}
+function hud() {
+  $("left").textContent = MINES - grid.filter(c => c.flag).length;
+  $("time").textContent = elapsed;
+}
+
+// --- drawing ---
+function draw() {
+  const s = cv.width / N;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = "bold " + Math.floor(s * 0.55) + "px Courier New, monospace";
+  grid.forEach((c, i) => {
+    const x = (i % N) * s, y = ((i / N) | 0) * s;
+    if (c.open) {
+      ctx.fillStyle = c.boom ? "#5a1030" : "#14163a"; ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+      if (c.mine) { ctx.fillStyle = "#ff4d6d"; ctx.shadowColor = "#ff4d6d"; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, s * 0.22, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+      else if (c.n) { ctx.fillStyle = COLORS[c.n]; ctx.shadowColor = COLORS[c.n]; ctx.shadowBlur = 6;
+        ctx.fillText(c.n, x + s / 2, y + s / 2 + 1); ctx.shadowBlur = 0; }
+    } else {
+      ctx.fillStyle = "#262a63"; ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+      ctx.fillStyle = "#3a3f8f"; ctx.fillRect(x + 1, y + 1, s - 2, 3);
+      if (c.flag) { ctx.fillStyle = "#ffe14d"; ctx.shadowColor = "#ffe14d"; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.moveTo(x + s * 0.35, y + s * 0.22); ctx.lineTo(x + s * 0.72, y + s * 0.38); ctx.lineTo(x + s * 0.35, y + s * 0.54); ctx.fill();
+        ctx.fillRect(x + s * 0.32, y + s * 0.22, s * 0.06, s * 0.56); ctx.shadowBlur = 0; }
+    }
+  });
+}
+
+// --- input ---
+function cellAt(ev) {
+  const r = cv.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / r.width * N), y = Math.floor((ev.clientY - r.top) / r.height * N);
+  return x >= 0 && y >= 0 && x < N && y < N ? idx(x, y) : -1;
+}
+let pressTimer = null, longPressed = false;
+cv.addEventListener("pointerdown", ev => {
+  longPressed = false;
+  if (ev.pointerType !== "mouse") pressTimer = setTimeout(() => { longPressed = true; const i = cellAt(ev); if (i >= 0) { toggleFlag(i); draw(); } }, 400);
+});
+cv.addEventListener("pointerup", ev => {
+  clearTimeout(pressTimer);
+  if (longPressed || state === "lost" || state === "won") return;
+  const i = cellAt(ev); if (i < 0) return;
+  if (ev.button === 2) return;
+  if (flagMode) toggleFlag(i);
+  else if (grid[i].open && grid[i].n) chord(i);
+  else reveal(i);
+  draw();
+});
+cv.addEventListener("pointercancel", () => clearTimeout(pressTimer));
+cv.addEventListener("contextmenu", ev => { ev.preventDefault(); const i = cellAt(ev); if (i >= 0) { toggleFlag(i); draw(); } });
+document.querySelectorAll("[data-size]").forEach(b => b.addEventListener("click", () => {
+  size = b.dataset.size; document.querySelectorAll("[data-size]").forEach(o => o.setAttribute("aria-pressed", o === b)); newGame();
+}));
+$("flag").addEventListener("click", () => { flagMode = !flagMode; $("flag").setAttribute("aria-pressed", flagMode); });
+$("new").addEventListener("click", newGame);
+function setMute(m) { muted = m; store.set("mines-muted", m ? "1" : "0"); $("mute").textContent = m ? "Sound off" : "Sound on"; }
+$("mute").addEventListener("click", () => setMute(!muted));
+document.addEventListener("keydown", ev => {
+  if (ev.key === "n" || ev.key === "N") newGame();
+  if (ev.key === "m" || ev.key === "M") setMute(!muted);
+  if (ev.key === "f" || ev.key === "F") $("flag").click();
+});
+setMute(muted);
+newGame();
+</script>
+</body>
+</html>
