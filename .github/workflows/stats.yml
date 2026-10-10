@@ -1,0 +1,40 @@
+name: stats-and-indexnow
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: IndexNow ping (Bing, Yandex, others)
+        if: github.event_name == 'push'
+        run: |
+          KEY=7f3c9a1e5b2d4c6e8a0f1b3d5e7c9a2b
+          sleep 90
+          BODY=$(jq -c --arg k "$KEY" '{host:"vampyer.github.io",key:$k,keyLocation:("https://vampyer.github.io/app-copy/"+$k+".txt"),urlList:.}' urls.json)
+          curl -s -o /dev/null -w "indexnow %{http_code}\n" -H 'Content-Type: application/json' -d "$BODY" https://api.indexnow.org/indexnow | tee indexnow.txt
+      - name: Read counters and site status
+        run: |
+          get(){ curl -s "https://hits.sh/vampyer.github.io/app-copy/$1.svg" | grep -o '<title>[^<]*' | head -1 | sed 's/<title>//'; }
+          SITE=$(curl -s -o /dev/null -w "%{http_code}" https://vampyer.github.io/app-copy/)
+          {
+            echo "{"
+            echo "\"checked_at\":\"$(date -u +%FT%TZ)\",\"site_http\":\"$SITE\","
+            for k in site buy-ats buy-bundle buy-icons buy-food buy-pixelbundle; do echo "\"$k\":\"$(get $k)\","; done
+            echo "\"indexnow\":\"$(cat indexnow.txt 2>/dev/null)\",\"event\":\"${{ github.event_name }}\""
+            echo "}"
+          } > /tmp/stats.json
+          cat /tmp/stats.json
+      - name: Append to stats branch
+        run: |
+          git config user.name stats-bot; git config user.email stats-bot@users.noreply.github.com
+          git fetch origin stats || true
+          if git rev-parse --verify origin/stats >/dev/null 2>&1; then git checkout -B stats origin/stats; else git checkout --orphan stats; git rm -rf . >/dev/null; fi
+          cat /tmp/stats.json | jq -c . >> stats.jsonl
+          git add stats.jsonl; git commit -m "stats $(date -u +%FT%TZ)"; git push origin stats
