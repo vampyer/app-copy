@@ -26,7 +26,7 @@ jobs:
           {
             echo "{"
             echo "\"checked_at\":\"$(date -u +%FT%TZ)\",\"site_http\":\"$SITE\","
-            for k in site buy-ats buy-bundle buy-icons buy-food buy-pixelbundle; do echo "\"$k\":\"$(get $k)\","; done
+            for k in site dl buy-planner; do echo "\"$k\":\"$(get $k)\","; done
             echo "\"indexnow\":\"$(cat indexnow.txt 2>/dev/null)\",\"event\":\"${{ github.event_name }}\""
             echo "}"
           } > /tmp/stats.json
