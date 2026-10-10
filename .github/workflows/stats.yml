@@ -17,12 +17,12 @@ jobs:
         run: |
           KEY=7f3c9a1e5b2d4c6e8a0f1b3d5e7c9a2b
           sleep 180
-          BODY=$(jq -c --arg k "$KEY" '{host:"vampyer.github.io",key:$k,keyLocation:("https://vampyer.github.io/app-copy/"+$k+".txt"),urlList:.}' urls.json)
+          BODY=$(jq -c --arg k "$KEY" '{host:"goodlittlefiles.com",key:$k,keyLocation:("https://goodlittlefiles.com/"+$k+".txt"),urlList:.}' urls.json)
           curl -s -o /dev/null -w "indexnow %{http_code}\n" -H 'Content-Type: application/json' -d "$BODY" https://api.indexnow.org/indexnow | tee indexnow.txt
       - name: Read counters and site status
         run: |
           get(){ curl -s "https://hits.sh/vampyer.github.io/app-copy/$1.svg" | grep -o '<title>[^<]*' | head -1 | sed 's/<title>//'; }
-          SITE=$(curl -s -o /dev/null -w "%{http_code}" https://vampyer.github.io/app-copy/)
+          SITE=$(curl -s -o /dev/null -w "%{http_code}" -L https://goodlittlefiles.com/)
           {
             echo "{"
             echo "\"checked_at\":\"$(date -u +%FT%TZ)\",\"site_http\":\"$SITE\","
