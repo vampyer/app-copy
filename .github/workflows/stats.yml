@@ -27,6 +27,7 @@ jobs:
             echo "{"
             echo "\"checked_at\":\"$(date -u +%FT%TZ)\",\"site_http\":\"$SITE\","
             for k in site dl buy-planner buy-games buy-tip buy-templates buy-icons buy-food buy-dungeon buy-pixelbundle; do echo "\"$k\":\"$(get $k)\","; done
+            echo "\"dns_a\":\"$(dig +short goodlittlefiles.com A | tr '\n' ' ')\",\"dns_www\":\"$(dig +short www.goodlittlefiles.com | tr '\n' ' ')\",\"domain_http\":\"$(curl -s -o /dev/null -w '%{http_code}' -m 15 http://goodlittlefiles.com/)\","
             echo "\"indexnow\":\"$(cat indexnow.txt 2>/dev/null)\",\"event\":\"${{ github.event_name }}\""
             echo "}"
           } > /tmp/stats.json
