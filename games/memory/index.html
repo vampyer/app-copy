@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neon Memory – Free Retro Browser Game</title>
+<meta name="description" content="Neon Memory: the free retro card-matching memory game. Flip cards, find every glowing pair in as few moves as you can. Three sizes, plays in your browser on desktop and phone.">
+<meta name="theme-color" content="#05050f">
+<!--
+  Neon Memory
+  A single-file retro card-matching memory game (HTML, CSS and inline SVG, no dependencies).
+  Controls: click / tap a card to flip it, arrows to move and Enter / Space to flip on keyboard, N for a new game, M to mute.
+
+  License: personal and commercial use of the game in your own projects allowed; do not resell this source as-is.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #05050f; color: #d8e1ff;
+    font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+  body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+  header { width: 100%; max-width: 560px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: 3px; text-transform: uppercase; color: #7af0ff; text-shadow: 0 0 8px #7af0ff; }
+  .hud { display: flex; gap: 14px; font-size: 14px; }
+  .hud b { color: #39ffb0; }
+  .bar { width: 100%; max-width: 560px; padding: 0 16px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font: inherit; font-size: 13px; color: #d8e1ff; background: #11122a; border: 1px solid #3a3d7a; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+  button[aria-pressed="true"] { background: #39ffb0; color: #05050f; border-color: #39ffb0; }
+  button:focus-visible { outline: 2px solid #ff3df0; outline-offset: 2px; }
+  main { width: 100%; max-width: 560px; padding: 0 16px; }
+  .board { display: grid; gap: 6px; padding: 6px; background: #0b0c1d; border: 2px solid #3a3d7a; border-radius: 6px; }
+  .card { position: relative; aspect-ratio: 1 / 1; width: 100%; padding: 0; border: 0; background: none; perspective: 600px;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation; user-select: none; }
+  .card:focus-visible { outline: 3px solid #ff3df0; outline-offset: 1px; }
+  .inner { position: absolute; inset: 0; transition: transform .28s ease; transform-style: preserve-3d; }
+  .card.up .inner { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; border-radius: 5px; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    display: flex; align-items: center; justify-content: center; }
+  .back { background: #262a63; border-top: 3px solid #3a3f8f; }
+  .back::after { content: ""; width: 30%; height: 30%; border: 2px solid #3a3f8f; transform: rotate(45deg); }
+  .front { background: #14163a; transform: rotateY(180deg); border: 1px solid #3a3d7a; }
+  .front svg { width: 62%; height: 62%; overflow: visible; }
+  .card.done .front { border-color: currentColor; box-shadow: 0 0 12px currentColor, inset 0 0 10px currentColor; }
+  .card.miss .front { background: #3a1028; border-color: #ff4d6d; }
+  .card:hover:not(.up) .back { background: #2e3374; }
+  .msg { min-height: 1.6em; text-align: center; margin: 10px 0 0; color: #ffe14d; text-shadow: 0 0 6px #ffe14d; }
+  footer { width: 100%; max-width: 560px; padding: 12px 16px 24px; font-size: 12px; color: #8088b8; text-align: center; }
+  @media (max-width: 420px) { .board { gap: 4px; padding: 4px; } }
+</style>
+<meta property="og:type" content="website"><meta property="og:url" content="https://goodlittlefiles.com/games/memory/"><meta property="og:site_name" content="Good Little Files"><meta property="og:image" content="https://goodlittlefiles.com/social/games.jpg"><meta property="og:image:width" content="1080"><meta property="og:image:height" content="1350"><meta name="twitter:card" content="summary_large_image"></head>
+<body>
+<header>
+  <h1>Neon Memory</h1>
+  <div class="hud"><span>MOVES <b id="moves">0</b></span><span>TIME <b id="time">0</b></span><span>BEST <b id="best">-</b></span></div>
+</header>
+<div class="bar">
+  <button data-size="easy" aria-pressed="true">Easy 4x3</button>
+  <button data-size="normal" aria-pressed="false">Normal 4x4</button>
+  <button data-size="hard" aria-pressed="false">Hard 6x4</button>
+  <button id="new">New (N)</button>
+  <button id="mute">Sound on</button>
+</div>
+<main>
+  <div class="board" id="board" role="group" aria-label="Memory cards"></div>
+  <p class="msg" id="msg" aria-live="polite">Flip two cards. Find every matching pair.</p>
+</main>
+<footer>
+  Flip two cards per move. A matching pair stays face up; a mismatch flips back. Find every pair in as few moves as you can.
+  Arrow keys and Enter work too. <div class="gshop"><a href="../">More free games</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973" target="_blank" rel="noopener" data-buy="tip">Tip what you like</a> · <a href="https://www.paypal.com/paypalme/fasteddie1973/3USD" target="_blank" rel="noopener" data-buy="games">Offline pack + source: $3</a></div><img src="https://hits.sh/vampyer.github.io/app-copy/site.svg" alt="" width="1" height="1" style="position:absolute;opacity:0"><script>document.querySelectorAll('[data-buy]').forEach(a=>a.addEventListener('click',()=>{new Image().src='https://hits.sh/vampyer.github.io/app-copy/buy-'+a.dataset.buy+'.svg'}));</script><style>.gshop{font:14px/1.6 system-ui,sans-serif;text-align:center;padding:12px 16px;color:#aab}.gshop a{color:#7fe3c4}</style><section class="ghow"><h2>How to play Neon Memory</h2><p>All cards start face down. Flip two at a time: if they show the same symbol they stay up, if not they flip back. Match every pair to win. Pick Easy (6 pairs), Normal (8 pairs) or Hard (12 pairs).</p><p><b>Controls:</b> Tap or click to flip, arrows + Enter/Space on keyboard, N new game, M mute</p><h3>Tips</h3><ul><li>Flip one card you know and one you have not seen yet, so every move teaches you something.</li><li>Say the symbols to yourself as you see them; it makes positions easier to remember.</li><li>Work through the board in rows instead of jumping around.</li></ul></section><style>.ghow{box-sizing:border-box;width:100%;max-width:640px;margin:0 auto;text-align:left;padding:8px 16px 32px;font:15px/1.6 system-ui,sans-serif;color:#cfd3e0}.ghow h2{font-size:1.2rem;color:#fff}.ghow h3{font-size:1rem;color:#fff}</style>
+</footer>
+<script>
+"use strict";
+const SIZES = { easy: [4, 3], normal: [4, 4], hard: [6, 4] };   // [columns, rows]
+// 12 glyphs: name, colour, SVG body drawn in a 0..100 box
+const GLYPHS = [
+  ["circle",   "#39ffb0", '<circle cx="50" cy="50" r="34"/>'],
+  ["square",   "#ff3df0", '<rect x="18" y="18" width="64" height="64"/>'],
+  ["triangle", "#ffe14d", '<polygon points="50,12 88,82 12,82"/>'],
+  ["diamond",  "#39b6ff", '<polygon points="50,8 90,50 50,92 10,50"/>'],
+  ["star",     "#ff7a3d", '<polygon points="50,6 61,38 95,38 67,58 78,92 50,71 22,92 33,58 5,38 39,38"/>'],
+  ["plus",     "#7af0ff", '<polygon points="38,10 62,10 62,38 90,38 90,62 62,62 62,90 38,90 38,62 10,62 10,38 38,38"/>'],
+  ["cross",    "#ff4d6d", '<path d="M18 18 L82 82 M82 18 L18 82" fill="none" stroke-width="16" stroke-linecap="square"/>'],
+  ["ring",     "#d8e1ff", '<circle cx="50" cy="50" r="30" fill="none" stroke-width="14"/>'],
+  ["hexagon",  "#b07aff", '<polygon points="50,8 87,29 87,71 50,92 13,71 13,29"/>'],
+  ["heart",    "#ff6fae", '<path d="M50 88 L14 52 A20 20 0 0 1 50 22 A20 20 0 0 1 86 52 Z"/>'],
+  ["moon",     "#c8ff3d", '<path d="M62 10 A40 40 0 1 0 90 66 A32 32 0 1 1 62 10 Z"/>'],
+  ["bolt",     "#ffd23d", '<polygon points="58,6 18,56 46,56 38,94 82,40 54,40"/>']
+];
+const $ = id => document.getElementById(id);
+const board = $("board");
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+let size = "easy", COLS, ROWS, cards = [], open = [], moves = 0, pairs = 0, state = "ready";
+let started = 0, timer = null, elapsed = 0, flipBack = null, focusIdx = 0;
+let muted = store.get("memory-muted") === "1", audio = null;
+
+// --- sound: tiny WebAudio beeps, created on first input ---
+function beep(freq, dur, type) {
+  if (muted) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = type || "square"; o.frequency.value = freq; g.gain.value = 0.05;
+    o.connect(g); g.connect(audio.destination); o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dur); o.stop(audio.currentTime + dur);
+  } catch (e) {}
+}
+
+// --- game state ---
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function newGame() {
+  [COLS, ROWS] = SIZES[size];
+  const n = COLS * ROWS / 2;
+  const picks = shuffle(GLYPHS.map((g, i) => i)).slice(0, n);
+  const deck = shuffle(picks.concat(picks));
+  clearTimeout(flipBack); flipBack = null; clearInterval(timer); timer = null;
+  open = []; moves = 0; pairs = 0; elapsed = 0; state = "ready";
+  board.style.gridTemplateColumns = "repeat(" + COLS + ", 1fr)";
+  board.textContent = "";
+  cards = deck.map((g, i) => {
+    const b = document.createElement("button");
+    b.className = "card"; b.type = "button"; b.tabIndex = i === 0 ? 0 : -1;
+    b.style.color = GLYPHS[g][1];
+    b.innerHTML = '<span class="inner"><span class="face back"></span><span class="face front">' +
+      '<svg viewBox="0 0 100 100" aria-hidden="true" fill="currentColor" stroke="currentColor" style="filter:drop-shadow(0 0 4px currentColor)">' +
+      GLYPHS[g][2] + '</svg></span></span>';
+    b.addEventListener("click", () => { focusIdx = i; setRoving(); flip(i); });
+    board.appendChild(b);
+    return { el: b, g, up: false, done: false };
+  });
+  focusIdx = 0;
+  cards.forEach((c, i) => label(i));
+  $("msg").textContent = "Flip two cards. Find every matching pair.";
+  showBest(); hud();
+}
+function label(i) {
+  const c = cards[i], pos = "row " + (Math.floor(i / COLS) + 1) + ", column " + (i % COLS + 1);
+  c.el.setAttribute("aria-label", pos + ": " + (c.up ? GLYPHS[c.g][0] + (c.done ? ", matched" : "") : "face down"));
+  c.el.classList.toggle("up", c.up); c.el.classList.toggle("done", c.done);
+}
+function settleMismatch() {                       // flip a shown mismatch back right away
+  clearTimeout(flipBack); flipBack = null;
+  open.forEach(j => { cards[j].up = false; cards[j].el.classList.remove("miss"); label(j); });
+  open = [];
+}
+function flip(i) {
+  const c = cards[i];
+  if (state === "won" || c.done) return;
+  if (flipBack) settleMismatch();
+  if (c.up) return;
+  if (state === "ready") {
+    state = "play"; started = Date.now(); $("msg").textContent = "";
+    timer = setInterval(() => { elapsed = Math.floor((Date.now() - started) / 1000); hud(); }, 250);
+  }
+  c.up = true; label(i); open.push(i);
+  beep(440 + open.length * 110, 0.05, "triangle");
+  if (open.length < 2) return;
+  moves++; hud();
+  const [a, b] = open;
+  if (cards[a].g === cards[b].g) {
+    cards[a].done = cards[b].done = true; label(a); label(b); open = []; pairs++;
+    setTimeout(() => beep(880, 0.08), 60);
+    if (pairs === cards.length / 2) win();
+  } else {
+    cards[a].el.classList.add("miss"); cards[b].el.classList.add("miss");
+    setTimeout(() => beep(180, 0.12, "sawtooth"), 60);
+    flipBack = setTimeout(settleMismatch, 800);
+  }
+}
+function win() {
+  state = "won"; clearInterval(timer);
+  elapsed = Math.floor((Date.now() - started) / 1000); hud();
+  const key = "memory-best-" + size, best = +store.get(key) || Infinity, rec = moves < best;
+  if (rec) store.set(key, moves);
+  showBest();
+  $("msg").textContent = (rec ? "NEW BEST! " : "ALL PAIRS! ") + moves + " moves in " + elapsed + "s (best " + store.get(key) + "). Press N to play again.";
+  [660, 880, 1100].forEach((f, k) => setTimeout(() => beep(f, 0.12), k * 120));
+}
+function showBest() { $("best").textContent = store.get("memory-best-" + size) || "-"; }
+function hud() { $("moves").textContent = moves; $("time").textContent = elapsed; }
+
+// --- input ---
+function setRoving() { cards.forEach((c, i) => { c.el.tabIndex = i === focusIdx ? 0 : -1; }); }
+function moveFocus(dx, dy) {
+  let x = focusIdx % COLS, y = Math.floor(focusIdx / COLS);
+  x = (x + dx + COLS) % COLS; y = (y + dy + ROWS) % ROWS;
+  focusIdx = y * COLS + x; setRoving(); cards[focusIdx].el.focus();
+}
+document.querySelectorAll("[data-size]").forEach(b => b.addEventListener("click", () => {
+  size = b.dataset.size; document.querySelectorAll("[data-size]").forEach(o => o.setAttribute("aria-pressed", o === b)); newGame();
+}));
+$("new").addEventListener("click", newGame);
+function setMute(m) { muted = m; store.set("memory-muted", m ? "1" : "0"); $("mute").textContent = m ? "Sound off" : "Sound on"; }
+$("mute").addEventListener("click", () => setMute(!muted));
+const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+document.addEventListener("keydown", ev => {
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  if (ev.key === "n" || ev.key === "N") newGame();
+  else if (ev.key === "m" || ev.key === "M") setMute(!muted);
+  else if (ARROWS[ev.key]) {
+    ev.preventDefault();
+    if (!board.contains(document.activeElement)) { setRoving(); cards[focusIdx].el.focus(); }
+    else moveFocus(ARROWS[ev.key][0], ARROWS[ev.key][1]);
+  } else if ((ev.key === "Enter" || ev.key === " ") && !(document.activeElement instanceof HTMLButtonElement)) {
+    ev.preventDefault(); setRoving(); cards[focusIdx].el.focus(); flip(focusIdx);
+  }
+});
+setMute(muted);
+newGame();
+</script>
+</body>
+</html>
