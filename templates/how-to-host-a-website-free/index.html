@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>How to Put a Website Online for Free (Netlify or GitHub Pages)</title>
+<meta name="description" content="Step-by-step: host an HTML website free with Netlify Drop or GitHub Pages, and connect your own domain name. No credit card needed."><link rel="canonical" href="https://goodlittlefiles.com/templates/how-to-host-a-website-free/">
+<meta property="og:title" content="How to Put a Website Online for Free (Netlify or GitHub Pages)"><meta property="og:description" content="Step-by-step: host an HTML website free with Netlify Drop or GitHub Pages, and connect your own domain name. No credit card needed.">
+<link rel="stylesheet" href="../../style.css"></head><body>
+<header class="top"><a class="brand" href="../../">Good Little Files</a><nav><a href="../../printables/">Printables</a><a href="../../games/">Games</a><a href="../../templates/">Templates</a><a href="../../pixel-art/">Pixel art</a></nav></header>
+<main class="wrap"><p class="eyebrow">Guide · free hosting</p><h1>How to put a website online for free</h1>
+<p class="lede">A one-page site made of plain HTML and CSS files (like our templates) can be hosted for free. Here are the two easiest ways, step by step. Neither needs a credit card.</p>
+<section><h2>Before you start</h2><p>You need a folder with an <code>index.html</code> file in it. That file becomes your home page. Open it in your browser first to check it looks right. If you don't have a site yet, the <a href="../saas/">free Launch template</a> works for this.</p></section>
+<section><h2>Option 1: Netlify Drop (about 2 minutes)</h2><ol>
+<li>Go to <b>app.netlify.com/drop</b>.</li>
+<li>Drag your whole site folder onto the page.</li>
+<li>Netlify gives you a live address straight away, ending in <code>.netlify.app</code>.</li>
+<li>Create a free Netlify account when it asks, so the site is kept and you can update it.</li>
+<li>To change the site later, open it in your Netlify dashboard, go to Deploys and drag the updated folder in again.</li></ol></section>
+<section><h2>Option 2: GitHub Pages (about 5 minutes)</h2><ol>
+<li>Make a free account at github.com.</li>
+<li>Create a new <b>public</b> repository. Its name becomes part of your address.</li>
+<li>Click <b>uploading an existing file</b>, drag in all your site files (not the folder itself, the files inside it, with <code>index.html</code> at the top level) and click Commit changes.</li>
+<li>Go to <b>Settings → Pages</b>. Under "Build and deployment", choose <b>Deploy from a branch</b>, pick <b>main</b> and <b>/ (root)</b>, then Save.</li>
+<li>After a minute or two your site is live at <code>yourname.github.io/repository-name</code>. The address is shown at the top of the Pages settings.</li></ol></section>
+<section><h2>Using your own domain name</h2><p>Both hosts let you use a domain you own, such as <code>yourbusiness.com</code>. Domains cost roughly $10 to $15 a year from any registrar.</p><ul>
+<li><b>Netlify:</b> Site configuration → Domain management → Add a domain, then follow the DNS steps it shows.</li>
+<li><b>GitHub Pages:</b> Settings → Pages → Custom domain. At your registrar, add four A records for <code>@</code> pointing to 185.199.108.153, 185.199.109.153, 185.199.110.153 and 185.199.111.153, and a CNAME record for <code>www</code> pointing to <code>yourname.github.io</code>. Then tick Enforce HTTPS once it is available.</li></ul>
+<p>DNS changes can take from a few minutes to a few hours to work.</p></section>
+<section><h2>Questions</h2>
+<p><b>Is it really free?</b> Yes. Both have free plans that are plenty for a small business or personal site. You only pay if you buy a domain.</p>
+<p><b>Can I use a contact form?</b> Netlify has free built-in forms. On GitHub Pages, use a mailto link or a free form service.</p>
+<p><b>Do I need WordPress?</b> No. A static page loads fast, needs no updates or plugins, and can't be hacked through a login page because it has none.</p></section>
+<section class="kit"><h2>Need a site to publish?</h2><p>Our <a href="../saas/">Launch template is free</a>. All 5 templates (SaaS, restaurant, portfolio, local business and event) are $9.</p>
+<div class="row"><a class="btn" href="https://www.paypal.com/paypalme/fasteddie1973/9USD" target="_blank" rel="noopener" data-buy="templates">Get all 5 templates: $9</a></div><p class="small">After paying, email your PayPal receipt to <a href="mailto:eddie-resumekeys@agentmail.to?subject=Order%3A%20Templates pack">eddie-resumekeys@agentmail.to</a>. Your files are emailed within 4 hours. Full refund within 7 days if you are not happy.</p></section></main>
+<footer class="wrap small">Payments by PayPal. Questions: <a href="mailto:eddie-resumekeys@agentmail.to">eddie-resumekeys@agentmail.to</a></footer>
+<img src="https://hits.sh/vampyer.github.io/app-copy/site.svg" alt="" width="1" height="1" style="position:absolute;opacity:0">
+<script>document.querySelectorAll('[data-buy]').forEach(a=>a.addEventListener('click',()=>{new Image().src='https://hits.sh/vampyer.github.io/app-copy/buy-'+a.dataset.buy+'.svg'}));
+document.querySelectorAll('[data-dl]').forEach(a=>a.addEventListener('click',()=>{new Image().src='https://hits.sh/vampyer.github.io/app-copy/dl.svg'}));</script>
+</body></html>
